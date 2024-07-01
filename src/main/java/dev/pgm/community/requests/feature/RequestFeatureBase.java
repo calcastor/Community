@@ -614,7 +614,9 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
   @Override
   public MapSizeBounds getCurrentMapSizeBounds() {
     return PGMUtils.getMapSizeBounds(
-        getRequestConfig().getLowerLimitOffset(), getRequestConfig().getUpperLimitOffset());
+        getRequestConfig().getLowerLimitOffset(),
+        getRequestConfig().getUpperLimitOffset(),
+        getRequestConfig().getScaleFactor());
   }
 
   private boolean isACooldownVariant(MapInfo map) {
@@ -832,7 +834,10 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
   private boolean isMapSizeAllowed(MapInfo map) {
     return PGMUtils.isMapSizeAllowed(
-        map, getRequestConfig().getLowerLimitOffset(), getRequestConfig().getUpperLimitOffset());
+        map,
+        getRequestConfig().getLowerLimitOffset(),
+        getRequestConfig().getUpperLimitOffset(),
+        getRequestConfig().getScaleFactor());
   }
 
   private void sendWrongSizeMapError(SponsorRequest request) {

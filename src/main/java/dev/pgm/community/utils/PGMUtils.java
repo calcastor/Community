@@ -84,9 +84,10 @@ public class PGMUtils {
     }
   }
 
-  public static boolean isMapSizeAllowed(MapInfo map, int lowerBoundOffset, int upperBoundOffset) {
+  public static boolean isMapSizeAllowed(
+      MapInfo map, int lowerBoundOffset, int upperBoundOffset, double scaleFactor) {
     if (isPGMEnabled()) {
-      MapSizeBounds bounds = getMapSizeBounds(lowerBoundOffset, upperBoundOffset);
+      MapSizeBounds bounds = getMapSizeBounds(lowerBoundOffset, upperBoundOffset, scaleFactor);
 
       int max = getMapMaxSize(map);
 
@@ -100,7 +101,8 @@ public class PGMUtils {
     return map.getMaxPlayers().stream().reduce(0, Integer::sum);
   }
 
-  public static MapSizeBounds getMapSizeBounds(int lowerBoundOffset, int upperBoundOffset) {
+  public static MapSizeBounds getMapSizeBounds(
+      int lowerBoundOffset, int upperBoundOffset, double scalingFactor) {
     if (!isPGMEnabled()) return new MapSizeBounds(0, 150);
 
     Match match = getMatch();
@@ -110,7 +112,7 @@ public class PGMUtils {
     int total = participants + (observers / 4);
 
     int lowerBound = participants;
-    int upperBound = Math.max(5, total + (int) (total * 0.35));
+    int upperBound = Math.max(5, total + (int) (total * scalingFactor));
 
     if (isFinished) {
       lowerBound = Math.max(0, lowerBound - lowerBoundOffset);
