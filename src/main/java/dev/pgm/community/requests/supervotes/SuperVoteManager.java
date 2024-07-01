@@ -93,7 +93,9 @@ public class SuperVoteManager {
   }
 
   public int getMultipliedVoteLevel(Player player) {
-    return getVoteLevel(player) + config.getSuperVoteMultiplier();
+    return Math.min(
+        PGM.get().getConfiguration().getMaxExtraVotes(),
+        getVoteLevel(player) + config.getSuperVoteMultiplier());
   }
 
   public int getVoteLevel(Player player) {
@@ -102,7 +104,7 @@ public class SuperVoteManager {
         return level;
       }
     }
-    return 0;
+    return 1;
   }
 
   public boolean isActive(Player player) {
