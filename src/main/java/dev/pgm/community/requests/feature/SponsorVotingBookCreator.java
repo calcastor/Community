@@ -5,6 +5,7 @@ import static net.kyori.adventure.text.Component.text;
 import static tc.oc.pgm.util.player.PlayerComponent.player;
 
 import dev.pgm.community.Community;
+import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
 import dev.pgm.community.requests.SponsorRequest;
 import dev.pgm.community.requests.supervotes.SuperVoteComponents;
@@ -144,12 +145,12 @@ public class SponsorVotingBookCreator extends VotingBookCreatorImpl {
       stdHoverBuilder.append(rankComponent).appendNewline();
     }
 
+    int value = ((RequestConfig) manager.getConfig()).getSuperVoteMultiplier();
     Component supervote = text()
         .append(MessageUtils.VOTE)
         .append(text(" Super Vote", NamedTextColor.LIGHT_PURPLE))
-        .append(text(" adds ", NamedTextColor.GRAY))
-        .append(text("3x", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
-        .append(text(" to your multiplier", NamedTextColor.GRAY))
+        .append(text(" boosts your vote by ", NamedTextColor.GRAY))
+        .append(text(value, NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
         .build();
 
     Component shop = text()
