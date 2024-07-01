@@ -17,8 +17,11 @@ public class RequestProfile {
   private int sponsorTokens;
   private Instant lastTokenRefreshTime;
 
+  private int superVotes;
+  private Instant lastSuperVote;
+
   public RequestProfile(UUID playerId) {
-    this(playerId, null, null, null, null, 0, null);
+    this(playerId, null, null, null, null, 0, null, 0, null);
   }
 
   public RequestProfile(
@@ -28,7 +31,9 @@ public class RequestProfile {
       Instant lastSponsorTime,
       String lastSponsorMap,
       int sponsorTokens,
-      Instant lastTokenRefreshTime) {
+      Instant lastTokenRefreshTime,
+      int superVotes,
+      Instant lastSuperVote) {
     this.playerId = playerId;
     this.lastRequestTime = lastRequestTime;
     this.lastRequestMap = lastRequestMap;
@@ -36,11 +41,18 @@ public class RequestProfile {
     this.lastSponsorMap = lastSponsorMap;
     this.sponsorTokens = sponsorTokens;
     this.lastTokenRefreshTime = lastTokenRefreshTime;
+    this.superVotes = superVotes;
+    this.lastSuperVote = lastSuperVote;
   }
 
-  public int award(int amount) {
+  public int giveSponsorToken(int amount) {
     this.sponsorTokens = Math.max(0, sponsorTokens + amount);
     return sponsorTokens;
+  }
+
+  public int giveSuperVotes(int amount) {
+    this.superVotes = Math.max(0, superVotes + amount);
+    return superVotes;
   }
 
   public void request(MapInfo map) {
@@ -51,7 +63,12 @@ public class RequestProfile {
   public void sponsor(MapInfo map) {
     this.lastSponsorMap = map.getId();
     this.lastSponsorTime = Instant.now();
-    award(-1);
+    giveSponsorToken(-1);
+  }
+
+  public void superVote() {
+    this.lastSuperVote = Instant.now();
+    giveSuperVotes(-1);
   }
 
   public Instant getLastRequestTime() {
@@ -74,12 +91,20 @@ public class RequestProfile {
     return sponsorTokens;
   }
 
+  public int getSuperVotes() {
+    return superVotes;
+  }
+
+  public Instant getLastSuperVote() {
+    return lastSuperVote;
+  }
+
   public Instant getLastTokenRefreshTime() {
     return lastTokenRefreshTime;
   }
 
   public void refreshTokens(int amount) {
-    award(amount);
+    giveSponsorToken(amount);
     this.lastTokenRefreshTime = Instant.now();
   }
 
@@ -100,13 +125,15 @@ public class RequestProfile {
   @Override
   public String toString() {
     return String.format(
-        "RequestProfile{id = %d, tokens = %d, requestMap = %s, sponsorMap = %s, lastRequest = %s, lastSponsor = %s, lastRefresh = %s}",
+        "RequestProfile{id = %d, tokens = %d, requestMap = %s, sponsorMap = %s, lastRequest = %s, lastSponsor = %s, lastRefresh = %s, superVotes = %s, lastSuperVote = %s}",
         getPlayerId().toString(),
         getSponsorTokens(),
         getLastRequestMap(),
         getLastSponsorMap(),
         getLastRequestTime().toString(),
         getLastSponsorTime().toString(),
-        getLastTokenRefreshTime().toString());
+        getLastTokenRefreshTime().toString(),
+        getSuperVotes(),
+        getLastSuperVote().toString());
   }
 }

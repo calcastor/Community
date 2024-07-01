@@ -45,6 +45,13 @@ public interface RequestFeature extends Feature {
   void sponsor(Player player, MapInfo map); // For premium sponsor auto-add
 
   /**
+   * Activate a super vote for the current map vote
+   *
+   * @param player the supervoter
+   */
+  void superVote(Player player);
+
+  /**
    * Get whether the provided playerId can submit a request
    *
    * @param playerId {@link UUID} of the requester
@@ -59,6 +66,22 @@ public interface RequestFeature extends Feature {
    * @return true if player can submit a sponsor request, false if not
    */
   boolean canSponsor(Player player); // If player can sponsor
+
+  /**
+   * Get whether the provided player can activate a super vote
+   *
+   * @param player
+   * @return true if the player can activate a super vote, false if not
+   */
+  boolean canSuperVote(Player player);
+
+  /**
+   * Get whether the provided player has activated a super vote
+   *
+   * @param player
+   * @return true if the player has activated a super vote, false if not
+   */
+  boolean isSuperVoteActive(Player player);
 
   /**
    * Submit a database update to the provided {@link RequestProfile}
@@ -152,4 +175,8 @@ public interface RequestFeature extends Feature {
   List<MapInfo> getAvailableSponsorMaps();
 
   MapSizeBounds getCurrentMapSizeBounds();
+
+  int getStandardExtraVoteLevel(Player player);
+
+  int getMultipliedExtraVoteLevel(Player player);
 }

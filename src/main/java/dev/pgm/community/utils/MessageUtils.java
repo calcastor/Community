@@ -5,6 +5,7 @@ import static net.kyori.adventure.text.Component.text;
 import static tc.oc.pgm.util.text.TemporalComponent.duration;
 
 import com.google.common.collect.Lists;
+import dev.pgm.community.Community;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -22,11 +23,22 @@ import tc.oc.pgm.util.text.TextTranslations;
 
 public class MessageUtils {
 
+  public static final String VOTE_SYMBOL = "Ⓢ";
   public static final String TOKEN_SYMBOL = "✪";
   public static final Component DENY = text("\u2715", NamedTextColor.DARK_RED);
   public static final Component ACCEPT = text("\u2714", NamedTextColor.GREEN);
   public static final Component WARNING = text("\u26a0", NamedTextColor.YELLOW);
   public static final Component TOKEN = text(TOKEN_SYMBOL, NamedTextColor.GOLD);
+  public static final Component VOTE = text(VOTE_SYMBOL, NamedTextColor.LIGHT_PURPLE);
+
+  public static final Component getStoreLink() {
+    return text()
+        .append(text(
+            Community.get().getServerConfig().getStoreLink(),
+            NamedTextColor.AQUA,
+            TextDecoration.UNDERLINED))
+        .build();
+  }
 
   public static String formatKickScreenMessage(String headerTitle, List<Component> lines) {
     List<Component> message = Lists.newArrayList();
@@ -34,10 +46,8 @@ public class MessageUtils {
     Component header =
         text(LegacyFormatUtils.horizontalLineHeading(headerTitle, ChatColor.DARK_GRAY));
 
-    Component footer =
-        text(
-            LegacyFormatUtils.horizontalLine(
-                ChatColor.DARK_GRAY, LegacyFormatUtils.MAX_CHAT_WIDTH));
+    Component footer = text(
+        LegacyFormatUtils.horizontalLine(ChatColor.DARK_GRAY, LegacyFormatUtils.MAX_CHAT_WIDTH));
 
     message.add(header); // Header Line - FIRST
     lines.forEach(message::add); // Add messages
@@ -67,17 +77,13 @@ public class MessageUtils {
 
   public static Component formatTokenTransaction(int amount, Component message, Component hover) {
     boolean add = amount > 0;
-    TextComponent.Builder builder =
-        text()
-            .append(
-                text(
-                    add ? "+" : "-",
-                    add ? NamedTextColor.GREEN : NamedTextColor.RED,
-                    TextDecoration.BOLD))
-            .append(text(Math.abs(amount) + " ", NamedTextColor.YELLOW, TextDecoration.BOLD))
-            .append(TOKEN)
-            .append(space())
-            .append(message);
+    TextComponent.Builder builder = text()
+        .append(text(
+            add ? "+" : "-", add ? NamedTextColor.GREEN : NamedTextColor.RED, TextDecoration.BOLD))
+        .append(text(Math.abs(amount) + " ", NamedTextColor.YELLOW, TextDecoration.BOLD))
+        .append(TOKEN)
+        .append(space())
+        .append(message);
 
     if (hover != null) {
       builder.hoverEvent(HoverEvent.showText(hover));

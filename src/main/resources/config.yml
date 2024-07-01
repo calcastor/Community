@@ -14,7 +14,27 @@ general:
 
   # The specific key ID used for fetching the server ID from the Environment API.
   environment-server-id: "server-id"
+  
+  # Store link used to advertise in specfic messages
+  store-link: "https://oc.tc/store"
 
+# Ranks    
+ranks:
+  supporter:
+    name: "Supporter"
+    permission: "community.rank.supporter"
+    prefix: "*"
+    color: "GREEN"
+    multiplier: 2
+    weight: 0
+  sponsor:
+    name: "Sponsor"
+    permission: "community.rank.sponsor"
+    prefix: "+"
+    color: "YELLOW"
+    multiplier: 3
+    weight: 1
+  
 # Moderation - Settings related to punishments (/warn, /kick, /ban, /mute)
 moderation:
   enabled: true   # Whether punishments are enabled
@@ -213,6 +233,11 @@ requests:
     lower-limit-offset: 4   # Subtracted from the current minimum
     upper-limit-offset: 8   # Added to the current maximum
     
+  super-votes:
+    enabled: true    # Whether /supervote is enabled
+    multiplier: 3    # The value of a super vote (how much to boost existing multiplier)
+    broadcast: true  # If super vote activation should be broadcast globally
+
 # Mobs - Spawn creatures that will attack players ;)
 mobs:
   enabled: true

@@ -1,4 +1,4 @@
-package dev.pgm.community.requests.commands;
+package dev.pgm.community.requests.commands.sponsor;
 
 import static net.kyori.adventure.text.Component.empty;
 import static net.kyori.adventure.text.Component.text;
@@ -12,7 +12,7 @@ import dev.pgm.community.CommunityCommand;
 import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
 import dev.pgm.community.requests.SponsorRequest;
-import dev.pgm.community.requests.commands.TokenCommands.TokenRefreshAmount;
+import dev.pgm.community.requests.commands.sponsor.TokenCommands.TokenRefreshAmount;
 import dev.pgm.community.requests.feature.RequestFeature;
 import dev.pgm.community.utils.BroadcastUtils;
 import dev.pgm.community.utils.CommandAudience;

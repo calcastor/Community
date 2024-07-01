@@ -91,6 +91,10 @@ public interface CommunityPermissions {
 
   String VIEW_MAP_COOLDOWNS = ROOT + ".view-map-cooldown";
 
+  // Super Votes
+  String SUPER_VOTE = REQUEST + ".super-vote";
+  String SUPER_VOTE_BALANCE = SUPER_VOTE + ".balance";
+
   // Translations
   String TRANSLATE = ROOT + ".translate"; // Access to /translate
 

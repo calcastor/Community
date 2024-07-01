@@ -21,28 +21,23 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
   public SQLRequestService() {
     super(TABLE_NAME, TABLE_FIELDS);
 
-    this.profileCache =
-        CacheBuilder.newBuilder()
-            .build(
-                new CacheLoader<UUID, UserRequestData>() {
-                  @Override
-                  public UserRequestData load(UUID key) throws Exception {
-                    return new UserRequestData(key);
-                  }
-                });
+    this.profileCache = CacheBuilder.newBuilder().build(new CacheLoader<UUID, UserRequestData>() {
+      @Override
+      public UserRequestData load(UUID key) throws Exception {
+        return new UserRequestData(key);
+      }
+    });
   }
 
   public CompletableFuture<RequestProfile> login(UUID playerId) {
-    return query(playerId.toString())
-        .thenApplyAsync(
-            profile -> {
-              RequestProfile reqProfile = new RequestProfile(playerId);
-              if (profile == null) {
-                save(reqProfile);
-                return reqProfile;
-              }
-              return profile;
-            });
+    return query(playerId.toString()).thenApplyAsync(profile -> {
+      RequestProfile reqProfile = new RequestProfile(playerId);
+      if (profile == null) {
+        save(reqProfile);
+        return reqProfile;
+      }
+      return profile;
+    });
   }
 
   @Nullable
@@ -64,7 +59,9 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
         convertTime(profile.getLastSponsorTime()),
         profile.getLastSponsorMap(),
         profile.getSponsorTokens(),
-        convertTime(profile.getLastTokenRefreshTime()));
+        convertTime(profile.getLastTokenRefreshTime()),
+        profile.getSuperVotes(),
+        convertTime(profile.getLastSuperVote()));
     profileCache.invalidate(profile.getPlayerId());
   }
 
@@ -77,6 +74,8 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
         profile.getLastSponsorMap(),
         profile.getSponsorTokens(),
         convertTime(profile.getLastTokenRefreshTime()),
+        profile.getSuperVotes(),
+        convertTime(profile.getLastSuperVote()),
         profile.getPlayerId().toString());
   }
 
@@ -94,37 +93,41 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
       return CompletableFuture.completedFuture(profile.getProfile());
     } else {
       return DB.getFirstRowAsync(SELECT_REQUEST_QUERY, playerId.toString())
-          .thenApplyAsync(
-              result -> {
-                if (result != null) {
-                  final UUID id = UUID.fromString(result.getString("id"));
-                  final long lastRequest = Long.parseLong(result.getString("last_request_time"));
-                  final String lastRequestMap = result.getString("last_request_map");
-                  final long lastSponsor = Long.parseLong(result.getString("last_sponsor_time"));
-                  final String lastSponsorMap = result.getString("last_sponsor_map");
-                  final int tokens = result.getInt("tokens");
-                  final long lastToken = Long.parseLong(result.getString("last_token_refresh"));
+          .thenApplyAsync(result -> {
+            if (result != null) {
+              final UUID id = UUID.fromString(result.getString("id"));
+              final long lastRequest = Long.parseLong(result.getString("last_request_time"));
+              final String lastRequestMap = result.getString("last_request_map");
+              final long lastSponsor = Long.parseLong(result.getString("last_sponsor_time"));
+              final String lastSponsorMap = result.getString("last_sponsor_map");
+              final int tokens = result.getInt("tokens");
+              final long lastToken = Long.parseLong(result.getString("last_token_refresh"));
+              final int superVotes = result.getInt("super_votes");
+              final long lastSuperVote = Long.parseLong(result.getString("last_super_vote"));
 
-                  final Instant lastRequestTime =
-                      lastRequest == -1 ? null : Instant.ofEpochMilli(lastRequest);
-                  final Instant lastSponsorTime =
-                      lastSponsor == -1 ? null : Instant.ofEpochMilli(lastSponsor);
-                  final Instant lastTokenRefreshTime =
-                      lastToken == -1 ? null : Instant.ofEpochMilli(lastToken);
+              final Instant lastRequestTime =
+                  lastRequest == -1 ? null : Instant.ofEpochMilli(lastRequest);
+              final Instant lastSponsorTime =
+                  lastSponsor == -1 ? null : Instant.ofEpochMilli(lastSponsor);
+              final Instant lastTokenRefreshTime =
+                  lastToken == -1 ? null : Instant.ofEpochMilli(lastToken);
+              final Instant lastSuperVoteTime =
+                  lastSuperVote == -1 ? null : Instant.ofEpochMilli(lastSuperVote);
 
-                  profile.setProfile(
-                      new RequestProfile(
-                          id,
-                          lastRequestTime,
-                          lastRequestMap,
-                          lastSponsorTime,
-                          lastSponsorMap,
-                          tokens,
-                          lastTokenRefreshTime));
-                }
-                profile.setLoaded(true);
-                return profile.getProfile();
-              });
+              profile.setProfile(new RequestProfile(
+                  id,
+                  lastRequestTime,
+                  lastRequestMap,
+                  lastSponsorTime,
+                  lastSponsorMap,
+                  tokens,
+                  lastTokenRefreshTime,
+                  superVotes,
+                  lastSuperVoteTime));
+            }
+            profile.setLoaded(true);
+            return profile.getProfile();
+          });
     }
   }
 

@@ -24,8 +24,10 @@ import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
 import dev.pgm.community.requests.SponsorRequest;
 import dev.pgm.community.requests.menu.SponsorMenu;
+import dev.pgm.community.requests.supervotes.SuperVoteManager;
 import dev.pgm.community.users.feature.UsersFeature;
 import dev.pgm.community.utils.BroadcastUtils;
+import dev.pgm.community.utils.MessageUtils;
 import dev.pgm.community.utils.PGMUtils;
 import dev.pgm.community.utils.PGMUtils.MapSizeBounds;
 import dev.pgm.community.utils.Sounds;
@@ -85,6 +87,8 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
   private SponsorRequest currentSponsor;
   private SponsorVotingBookCreator bookCreator;
 
+  private SuperVoteManager superVotes;
+
   private boolean accepting;
 
   public RequestFeatureBase(
@@ -99,6 +103,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     this.sponsors = Lists.newLinkedList();
     this.currentSponsor = null;
     this.bookCreator = new SponsorVotingBookCreator(this);
+    this.superVotes = new SuperVoteManager(config, logger);
 
     if (getConfig().isEnabled() && PGMUtils.isPGMEnabled()) {
       enable();
@@ -147,20 +152,24 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
   @EventHandler
   public void onPlayerJoin(PlayerJoinEvent event) {
+    final Player player = event.getPlayer();
+
+    superVotes.onRelogin(player);
+
     onLogin(event).thenAcceptAsync(profile -> {
-      if (event.getPlayer().hasPermission(CommunityPermissions.REQUEST_SPONSOR)) {
+      if (player.hasPermission(CommunityPermissions.REQUEST_SPONSOR)) {
         int refresh = 0;
         boolean daily = false;
 
         // Check permission to determine what amount to refresh
         // Always prefer the daily compared to the weekly (e.g sponsor inherits donor perms,
         // only give daily not weekly)
-        if (event.getPlayer().hasPermission(CommunityPermissions.TOKEN_DAILY)) {
+        if (player.hasPermission(CommunityPermissions.TOKEN_DAILY)) {
           if (profile.hasDayElapsed()) {
             refresh = getRequestConfig().getDailyTokenAmount();
             daily = true;
           }
-        } else if (event.getPlayer().hasPermission(CommunityPermissions.TOKEN_WEEKLY)) {
+        } else if (player.hasPermission(CommunityPermissions.TOKEN_WEEKLY)) {
           if (profile.hasWeekElapsed()) {
             refresh = getRequestConfig().getWeeklyTokenAmount();
           }
@@ -170,8 +179,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
         if (refresh > 0 && profile.getSponsorTokens() < getRequestConfig().getMaxTokens()) {
           profile.refreshTokens(refresh); // Set new token amount
           update(profile); // Save new token balance to database
-          sendDelayedTokenRefreshMessage(
-              event.getPlayer(), refresh, daily, profile.getSponsorTokens());
+          sendDelayedTokenRefreshMessage(player, refresh, daily, profile.getSponsorTokens());
         }
       }
     });
@@ -201,6 +209,8 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
   @EventHandler
   public void onMatchEnd(MatchFinishEvent event) {
+    superVotes.onVoteStart();
+
     if (currentSponsor != null) { // Reset current sponsor after match ends
       currentSponsor = null;
     }
@@ -252,13 +262,15 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
   @EventHandler
   public void onVoteEnd(MatchVoteFinishEvent event) {
+    superVotes.onVoteEnd();
+
     if (currentSponsor != null) {
       Player player = Bukkit.getPlayer(currentSponsor.getPlayerId());
 
       // Same map = winner, refund the token even if offline
       if (currentSponsor.getMap().equals(event.getPickedMap()) && currentSponsor.canRefund()) {
         getRequestProfile(currentSponsor.getPlayerId()).thenAcceptAsync(profile -> {
-          profile.award(1);
+          profile.giveSponsorToken(1);
           update(profile);
 
           if (player != null) {
@@ -487,6 +499,46 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
   }
 
   @Override
+  public void superVote(Player player) {
+    Audience viewer = Audience.get(player);
+
+    if (!getRequestConfig().isSuperVoteEnabled()) {
+      viewer.sendWarning(text("Super votes are not enabled!"));
+      return;
+    }
+
+    if (!canSuperVote(player)) {
+      viewer.sendWarning(text("You have already activated a super vote for this vote!"));
+      return;
+    }
+
+    if (!superVotes.isVotingActive()) {
+      viewer.sendWarning(text("You can only activate a super vote after the match ends!"));
+      return;
+    }
+
+    getRequestProfile(player.getUniqueId()).thenAcceptAsync(profile -> {
+      if (profile.getSuperVotes() < 1) {
+        viewer.sendWarning(text("You don't have enough super votes!"));
+        return;
+      }
+
+      // Save profile
+      profile.superVote();
+      update(profile);
+
+      // Activate permissions
+      superVotes.onActivate(player);
+
+      // Broadcast or send message
+      sendSuperVoterActivationFeedback(player);
+    });
+
+    // Re-Open the vote book
+    Bukkit.dispatchCommand(player, "votebook");
+  }
+
+  @Override
   public boolean canRequest(UUID playerId) {
     return cooldown.getIfPresent(playerId) == null;
   }
@@ -508,6 +560,16 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
         .filter(e -> e.getValue().equals(map))
         .map(Entry::getKey)
         .collect(Collectors.toSet());
+  }
+
+  @Override
+  public boolean canSuperVote(Player player) {
+    return !isSuperVoteActive(player);
+  }
+
+  @Override
+  public boolean isSuperVoteActive(Player player) {
+    return superVotes.isActive(player);
   }
 
   @Override
@@ -609,6 +671,16 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
   @Override
   public Map<MapInfo, MapCooldown> getMapCooldowns() {
     return mapCooldown;
+  }
+
+  @Override
+  public int getStandardExtraVoteLevel(Player player) {
+    return superVotes.getVoteLevel(player);
+  }
+
+  @Override
+  public int getMultipliedExtraVoteLevel(Player player) {
+    return superVotes.getMultipliedVoteLevel(player);
   }
 
   private Component getCooldownMessage(Instant lastRequest, Duration cooldownTime) {
@@ -797,5 +869,25 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
         .append(text(max, NamedTextColor.GOLD))
         .append(text(")", NamedTextColor.GRAY))
         .build();
+  }
+
+  private void sendSuperVoterActivationFeedback(Player player) {
+    Audience viewer = Audience.get(player);
+    if (getRequestConfig().isSuperVoteBroadcast()) {
+      Component alert = text()
+          .append(MessageUtils.VOTE)
+          .append(player(player, NameStyle.FANCY))
+          .append(text(" has activated a ", NamedTextColor.YELLOW))
+          .append(text("super vote", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
+          .build();
+
+      BroadcastUtils.sendGlobalMessage(alert);
+    } else {
+      viewer.sendMessage(text()
+          .append(MessageUtils.VOTE)
+          .append(text("You activated a ", NamedTextColor.YELLOW))
+          .append(text("super vote", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
+          .append(text("!", NamedTextColor.YELLOW)));
+    }
   }
 }

@@ -1,4 +1,4 @@
-package dev.pgm.community.requests.commands;
+package dev.pgm.community.requests.commands.sponsor;
 
 import static net.kyori.adventure.text.Component.space;
 import static net.kyori.adventure.text.Component.text;
@@ -42,32 +42,27 @@ public class TokenCommands extends CommunityCommand {
   @CommandDescription("Check your token balance")
   public void tokens(CommandAudience audience, @Argument("target") TargetPlayer target) {
     if (target != null && audience.hasPermission(CommunityPermissions.TOKEN_BALANCE)) {
-      getTarget(target.getIdentifier(), users)
-          .thenAcceptAsync(
-              uuid -> {
-                if (uuid.isPresent()) {
-                  RequestProfile profile = requests.getRequestProfile(uuid.get()).join();
-                  if (profile == null) {
-                    audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
-                    return;
-                  }
+      getTarget(target.getIdentifier(), users).thenAcceptAsync(uuid -> {
+        if (uuid.isPresent()) {
+          RequestProfile profile = requests.getRequestProfile(uuid.get()).join();
+          if (profile == null) {
+            audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
+            return;
+          }
 
-                  Component name = users.renderUsername(uuid, NameStyle.FANCY).join();
-                  sendTokenBalanceMessage(audience.getAudience(), name, profile.getSponsorTokens());
-                } else {
-                  audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
-                }
-              });
+          Component name = users.renderUsername(uuid, NameStyle.FANCY).join();
+          sendTokenBalanceMessage(audience.getAudience(), name, profile.getSponsorTokens());
+        } else {
+          audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
+        }
+      });
     } else if (audience.isPlayer()) {
       Player player = audience.getPlayer();
-      requests
-          .getRequestProfile(player.getUniqueId())
-          .thenAcceptAsync(
-              profile -> {
-                int tokens = profile.getSponsorTokens();
-                sendTokenBalanceMessage(audience.getAudience(), null, tokens);
-                sendRefreshDuration(audience.getAudience(), player, profile);
-              });
+      requests.getRequestProfile(player.getUniqueId()).thenAcceptAsync(profile -> {
+        int tokens = profile.getSponsorTokens();
+        sendTokenBalanceMessage(audience.getAudience(), null, tokens);
+        sendRefreshDuration(audience.getAudience(), player, profile);
+      });
     } else {
       audience.sendWarning(text("Please provide a username to check the token balance of"));
     }
@@ -80,43 +75,38 @@ public class TokenCommands extends CommunityCommand {
       CommandAudience audience,
       @Argument("target") TargetPlayer target,
       @Argument("amount") int amount) {
-    getTarget(target.getIdentifier(), users)
-        .thenAcceptAsync(
-            targetId -> {
-              if (targetId.isPresent()) {
-                RequestProfile profile = requests.getRequestProfile(targetId.get()).join();
-                if (profile != null) {
-                  int total = profile.award(amount);
-                  requests.update(profile);
-                  audience.sendMessage(
-                      text()
-                          .append(MessageUtils.TOKEN)
-                          .append(space())
-                          .append(
-                              users.renderUsername(profile.getPlayerId(), NameStyle.FANCY).join())
-                          .append(text(" now has "))
-                          .append(text(total, NamedTextColor.YELLOW, TextDecoration.BOLD))
-                          .append(text(" sponsor token" + (total != 1 ? "s" : "")))
-                          .color(NamedTextColor.GRAY)
-                          .build());
-                  return;
-                }
-              }
-              audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
-            });
+    getTarget(target.getIdentifier(), users).thenAcceptAsync(targetId -> {
+      if (targetId.isPresent()) {
+        RequestProfile profile = requests.getRequestProfile(targetId.get()).join();
+        if (profile != null) {
+          int total = profile.giveSponsorToken(amount);
+          requests.update(profile);
+          audience.sendMessage(text()
+              .append(MessageUtils.TOKEN)
+              .append(space())
+              .append(
+                  users.renderUsername(profile.getPlayerId(), NameStyle.FANCY).join())
+              .append(text(" now has "))
+              .append(text(total, NamedTextColor.YELLOW, TextDecoration.BOLD))
+              .append(text(" sponsor token" + (total != 1 ? "s" : "")))
+              .color(NamedTextColor.GRAY)
+              .build());
+          return;
+        }
+      }
+      audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
+    });
   }
 
   private void sendTokenBalanceMessage(Audience viewer, Component name, int tokens) {
-    viewer.sendMessage(
-        text()
-            .append(MessageUtils.TOKEN)
-            .append(text(" "))
-            .append(
-                name == null ? text("You have ") : name.append(text(" has ", NamedTextColor.GRAY)))
-            .append(text(tokens, NamedTextColor.YELLOW, TextDecoration.BOLD))
-            .append(text(" sponsor token" + (tokens != 1 ? "s" : "") + "."))
-            .color(NamedTextColor.GRAY)
-            .build());
+    viewer.sendMessage(text()
+        .append(MessageUtils.TOKEN)
+        .append(text(" "))
+        .append(name == null ? text("You have ") : name.append(text(" has ", NamedTextColor.GRAY)))
+        .append(text(tokens, NamedTextColor.YELLOW, TextDecoration.BOLD))
+        .append(text(" sponsor token" + (tokens != 1 ? "s" : "") + "."))
+        .color(NamedTextColor.GRAY)
+        .build());
   }
 
   public static class TokenRefreshAmount {
@@ -174,16 +164,15 @@ public class TokenCommands extends CommunityCommand {
         return;
       }
 
-      viewer.sendMessage(
-          text()
-              .append(text("-  ", NamedTextColor.YELLOW))
-              .append(text("Next token ("))
-              .append(text("+", NamedTextColor.GREEN, TextDecoration.BOLD))
-              .append(text(info.getAmount(), NamedTextColor.GREEN, TextDecoration.BOLD))
-              .append(text(") in "))
-              .append(duration(info.getDuration(), NamedTextColor.YELLOW))
-              .color(NamedTextColor.GRAY)
-              .build());
+      viewer.sendMessage(text()
+          .append(text("-  ", NamedTextColor.YELLOW))
+          .append(text("Next token ("))
+          .append(text("+", NamedTextColor.GREEN, TextDecoration.BOLD))
+          .append(text(info.getAmount(), NamedTextColor.GREEN, TextDecoration.BOLD))
+          .append(text(") in "))
+          .append(duration(info.getDuration(), NamedTextColor.YELLOW))
+          .color(NamedTextColor.GRAY)
+          .build());
     }
   }
 }

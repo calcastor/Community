@@ -35,8 +35,10 @@ import dev.pgm.community.polls.PollThreshold;
 import dev.pgm.community.polls.commands.PollManagementCommands;
 import dev.pgm.community.polls.commands.PollVoteCommands;
 import dev.pgm.community.requests.commands.RequestCommands;
-import dev.pgm.community.requests.commands.SponsorCommands;
-import dev.pgm.community.requests.commands.TokenCommands;
+import dev.pgm.community.requests.commands.sponsor.SponsorCommands;
+import dev.pgm.community.requests.commands.sponsor.TokenCommands;
+import dev.pgm.community.requests.commands.supervotes.SuperVoteAdminCommands;
+import dev.pgm.community.requests.commands.supervotes.SuperVoteCommand;
 import dev.pgm.community.teleports.TeleportCommand;
 import dev.pgm.community.users.commands.UserInfoCommands;
 import dev.pgm.community.utils.CommandAudience;
@@ -138,6 +140,8 @@ public class CommunityCommandGraph extends CommandGraph<Community> {
     register(new RequestCommands());
     register(new SponsorCommands());
     register(new TokenCommands());
+    register(new SuperVoteCommand());
+    register(new SuperVoteAdminCommands());
 
     // Teleport
     register(new TeleportCommand());
@@ -158,14 +162,11 @@ public class CommunityCommandGraph extends CommandGraph<Community> {
     register(new CommunityPluginCommand());
 
     // Help command
-    manager.command(
-        manager
-            .commandBuilder("community")
-            .literal("help")
-            .optional("query", StringParser.greedyStringParser())
-            .handler(
-                context ->
-                    minecraftHelp.queryCommands(
-                        context.<String>optional("query").orElse(""), context.sender())));
+    manager.command(manager
+        .commandBuilder("community")
+        .literal("help")
+        .optional("query", StringParser.greedyStringParser())
+        .handler(context -> minecraftHelp.queryCommands(
+            context.<String>optional("query").orElse(""), context.sender())));
   }
 }

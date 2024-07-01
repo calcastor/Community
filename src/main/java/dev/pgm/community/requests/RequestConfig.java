@@ -25,11 +25,16 @@ public class RequestConfig extends FeatureConfigImpl {
   private static final String MAP_COOLDOWN_MULTIPLY = SPONSORS + ".map-cooldown";
   private static final String LOWER_LIMIT_OFFSET = SPONSORS + ".lower-limit-offset";
   private static final String UPPER_LIMIT_OFFSET = SPONSORS + ".upper-limit-offset";
+  private static final String SUPER_VOTE = KEY + ".super-votes";
+  private static final String SUPER_VOTE_ENABLED = SUPER_VOTE + ".enabled";
+  private static final String SUPER_VOTE_MULTIPLIER = SUPER_VOTE + ".multiplier";
+  private static final String SUPER_VOTE_BROADCAST = SUPER_VOTE + ".broadcast";
 
   private Duration cooldown; // Cooldown for using /request
   private Duration sponsorCooldown; // Default cooldown for sponsor requests
 
-  private boolean sponsors; // If sponsor is enabled
+  private boolean sponsorEnabled; // If sponsor is enabled
+  private boolean superVoteEnabled; // If super votes are enabled
 
   private int dailyTokens; // Amount of tokens given on a daily basis
   private int weeklyTokens; // Amount of tokens given on a weekly basis
@@ -45,6 +50,9 @@ public class RequestConfig extends FeatureConfigImpl {
   private int lowerLimitOffset; // Offset to apply on match end to lower map size bound
   private int upperLimitOffset; // Offset to apply on match end to upper map size bound
 
+  private int superVoteMultiplier; // The value a super vote should add
+  private boolean superVoteBroadcast; // If super vote activation should be broadcasted
+
   public RequestConfig(Configuration config) {
     super(KEY, config);
   }
@@ -54,7 +62,7 @@ public class RequestConfig extends FeatureConfigImpl {
   }
 
   public boolean isSponsorEnabled() {
-    return sponsors;
+    return sponsorEnabled;
   }
 
   public Duration getSponsorCooldown(Player player) {
@@ -105,11 +113,23 @@ public class RequestConfig extends FeatureConfigImpl {
     return upperLimitOffset;
   }
 
+  public boolean isSuperVoteEnabled() {
+    return superVoteEnabled;
+  }
+
+  public int getSuperVoteMultiplier() {
+    return superVoteMultiplier;
+  }
+
+  public boolean isSuperVoteBroadcast() {
+    return superVoteBroadcast;
+  }
+
   @Override
   public void reload(Configuration config) {
     super.reload(config);
     this.cooldown = parseDuration(config.getString(COOLDOWN, "15s"));
-    this.sponsors = config.getBoolean(SPONSORS_ENABLED);
+    this.sponsorEnabled = config.getBoolean(SPONSORS_ENABLED);
     this.sponsorCooldown = parseDuration(config.getString(SPONSORS_COOLDOWN, "1h"));
     this.dailyTokens = config.getInt(DAILY_TOKENS);
     this.weeklyTokens = config.getInt(WEEKLY_TOKENS);
@@ -119,5 +139,8 @@ public class RequestConfig extends FeatureConfigImpl {
     this.mapCooldownMultiply = config.getInt(MAP_COOLDOWN_MULTIPLY);
     this.lowerLimitOffset = config.getInt(LOWER_LIMIT_OFFSET);
     this.upperLimitOffset = config.getInt(UPPER_LIMIT_OFFSET);
+    this.superVoteEnabled = config.getBoolean(SUPER_VOTE_ENABLED);
+    this.superVoteMultiplier = config.getInt(SUPER_VOTE_MULTIPLIER);
+    this.superVoteBroadcast = config.getBoolean(SUPER_VOTE_BROADCAST);
   }
 }
