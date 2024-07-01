@@ -9,7 +9,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachment;
 import tc.oc.pgm.api.PGM;
@@ -70,23 +69,12 @@ public class SuperVoteManager {
         new StoredPermission(player, getExtraVotePermission(multipliedVoteLevel));
     permission.enable();
     playerPermissions.put(player.getUniqueId(), permission);
-
-    // DEBUG:
-    player.sendMessage(ChatColor.GREEN
-        + "You now have "
-        + ChatColor.AQUA
-        + " pgm.vote.extra."
-        + multipliedVoteLevel);
   }
 
   private void removeSuperVotePermissions(Player player) {
     StoredPermission permission = playerPermissions.remove(player.getUniqueId());
     if (permission != null) {
       permission.disable(player);
-
-      // DEBUG:
-      player.sendMessage(
-          ChatColor.RED + "You no longer have " + ChatColor.AQUA + permission.getPermission());
     }
   }
 

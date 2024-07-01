@@ -876,6 +876,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     if (getRequestConfig().isSuperVoteBroadcast()) {
       Component alert = text()
           .append(MessageUtils.VOTE)
+          .appendSpace()
           .append(player(player, NameStyle.FANCY))
           .append(text(" has activated a ", NamedTextColor.YELLOW))
           .append(text("super vote", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
@@ -885,6 +886,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     } else {
       viewer.sendMessage(text()
           .append(MessageUtils.VOTE)
+          .appendSpace()
           .append(text("You activated a ", NamedTextColor.YELLOW))
           .append(text("super vote", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
           .append(text("!", NamedTextColor.YELLOW)));
