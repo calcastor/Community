@@ -105,7 +105,7 @@ public class SponsorVotingBookCreator extends VotingBookCreatorImpl {
     if (!canUse) {
       activateHover = text()
           .append(text("You don't have any super votes available!", NamedTextColor.GRAY))
-          .appendSpace()
+          .appendNewline()
           .append(text("Visit ", NamedTextColor.GRAY))
           .append(MessageUtils.getStoreLink())
           .append(text(" to purchase more.", NamedTextColor.GRAY))
