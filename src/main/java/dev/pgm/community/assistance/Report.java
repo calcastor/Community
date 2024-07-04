@@ -1,6 +1,5 @@
 package dev.pgm.community.assistance;
 
-import java.time.Instant;
 import java.util.UUID;
 
 public class Report extends AssistanceRequest implements Comparable<Report> {
@@ -17,12 +16,12 @@ public class Report extends AssistanceRequest implements Comparable<Report> {
    * @param time time reported
    * @param name of current server
    */
-  public Report(UUID reportedId, UUID reporterId, String reason, Instant time, String server) {
+  public Report(UUID reportedId, UUID reporterId, String reason, long time, String server) {
     this(UUID.randomUUID(), reportedId, reporterId, reason, time, server);
   }
 
   public Report(
-      UUID reportId, UUID reportedId, UUID reporterId, String reason, Instant time, String server) {
+      UUID reportId, UUID reportedId, UUID reporterId, String reason, long time, String server) {
     super(reporterId, reportedId, time, reason, server, RequestType.REPORT);
     this.reportId = reportId;
     this.notifiedSender = false;

@@ -8,7 +8,7 @@ public class AssistanceRequest {
 
   private UUID senderId;
   private UUID targetId;
-  private Instant time;
+  private long time;
   private String reason;
   private String server;
   private RequestType type;
@@ -16,7 +16,7 @@ public class AssistanceRequest {
   public AssistanceRequest() {}
 
   public AssistanceRequest(
-      UUID senderId, UUID targetId, Instant time, String reason, String server, RequestType type) {
+      UUID senderId, UUID targetId, long time, String reason, String server, RequestType type) {
     this.senderId = senderId;
     this.targetId = targetId;
     this.time = time;
@@ -34,7 +34,7 @@ public class AssistanceRequest {
   }
 
   public Instant getTime() {
-    return time;
+    return Instant.ofEpochMilli(time);
   }
 
   public String getReason() {
@@ -61,7 +61,7 @@ public class AssistanceRequest {
         getTargetId().toString(),
         getSenderId().toString(),
         getReason(),
-        getTime().toString(),
+        getTime(),
         getServer(),
         getType().name());
   }

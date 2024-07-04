@@ -7,10 +7,10 @@ import org.bukkit.entity.Player;
 public class PlayerHelpRequest extends AssistanceRequest {
 
   public PlayerHelpRequest(Player player, String reason, String server) {
-    this(player.getUniqueId(), reason, Instant.now(), server);
+    this(player.getUniqueId(), reason, Instant.now().toEpochMilli(), server);
   }
 
-  public PlayerHelpRequest(UUID playerId, String reason, Instant time, String server) {
+  public PlayerHelpRequest(UUID playerId, String reason, long time, String server) {
     super(playerId, playerId, time, reason, server, RequestType.PLAYER_HELP);
   }
 }

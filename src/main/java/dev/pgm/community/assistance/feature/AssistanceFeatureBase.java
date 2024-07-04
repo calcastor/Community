@@ -65,16 +65,15 @@ public abstract class AssistanceFeatureBase extends FeatureBase implements Assis
       UsersFeature users,
       InventoryManager inventory) {
     super(config, logger, featureName);
-    cooldown =
-        CacheBuilder.newBuilder().expireAfterWrite(config.getCooldown(), TimeUnit.SECONDS).build();
-    this.recentReports =
-        CacheBuilder.newBuilder()
-            .expireAfterWrite(config.getReportExpireTime().getSeconds(), TimeUnit.SECONDS)
-            .build();
-    this.recentHelp =
-        CacheBuilder.newBuilder()
-            .expireAfterWrite(config.getReportExpireTime().getSeconds(), TimeUnit.SECONDS)
-            .build();
+    cooldown = CacheBuilder.newBuilder()
+        .expireAfterWrite(config.getCooldown(), TimeUnit.SECONDS)
+        .build();
+    this.recentReports = CacheBuilder.newBuilder()
+        .expireAfterWrite(config.getReportExpireTime().getSeconds(), TimeUnit.SECONDS)
+        .build();
+    this.recentHelp = CacheBuilder.newBuilder()
+        .expireAfterWrite(config.getReportExpireTime().getSeconds(), TimeUnit.SECONDS)
+        .build();
     this.network = network;
     this.users = users;
     this.inventory = inventory;
@@ -117,9 +116,8 @@ public abstract class AssistanceFeatureBase extends FeatureBase implements Assis
   public Component getCooldownMessage(UUID playerId) {
     int cooldown = getCooldownSeconds(playerId);
     Component secondsComponent = text(Integer.toString(cooldown));
-    Component secondsLeftComponent =
-        translatable(
-            cooldown != 1 ? "misc.seconds" : "misc.second", NamedTextColor.AQUA, secondsComponent);
+    Component secondsLeftComponent = translatable(
+        cooldown != 1 ? "misc.seconds" : "misc.second", NamedTextColor.AQUA, secondsComponent);
     return translatable("command.cooldown", secondsLeftComponent);
   }
 
@@ -148,13 +146,12 @@ public abstract class AssistanceFeatureBase extends FeatureBase implements Assis
     }
 
     // Create Report
-    Report report =
-        new Report(
-            target.getUniqueId(),
-            sender.getUniqueId(),
-            reason,
-            Instant.now(),
-            NetworkUtils.getServer());
+    Report report = new Report(
+        target.getUniqueId(),
+        sender.getUniqueId(),
+        reason,
+        Instant.now().toEpochMilli(),
+        NetworkUtils.getServer());
 
     // Call Event
     Bukkit.getPluginManager().callEvent(new PlayerReportEvent(report));
@@ -228,21 +225,18 @@ public abstract class AssistanceFeatureBase extends FeatureBase implements Assis
     CompletableFuture<Component> target =
         users.renderUsername(request.getTargetId(), NameStyle.FANCY);
 
-    CompletableFuture.allOf(sender, target)
-        .thenAcceptAsync(
-            x -> {
-              Component senderName = sender.join();
-              Component targetName = target.join();
-              broadcastRequest(server, senderName, targetName, reason, report);
-            });
+    CompletableFuture.allOf(sender, target).thenAcceptAsync(x -> {
+      Component senderName = sender.join();
+      Component targetName = target.join();
+      broadcastRequest(server, senderName, targetName, reason, report);
+    });
   }
 
   private void broadcastRequest(
       String server, Component sender, Component target, String reason, boolean report) {
-    Component component =
-        report
-            ? formatReportBroadcast(sender, target, reason)
-            : formatHelpBroadcast(sender, reason);
+    Component component = report
+        ? formatReportBroadcast(sender, target, reason)
+        : formatHelpBroadcast(sender, reason);
     Sound sound = report ? Sounds.PLAYER_REPORT : Sounds.HELP_REQUEST;
     BroadcastUtils.sendAdminChatMessage(
         component, server, sound, CommunityPermissions.REPORT_BROADCASTS);
@@ -268,30 +262,25 @@ public abstract class AssistanceFeatureBase extends FeatureBase implements Assis
   }
 
   private void sendHelpRequestFeedback(Player player) {
-    Component thanks =
-        text()
-            .append(translatable("misc.thankYou", NamedTextColor.GREEN))
-            .append(space())
-            .append(
-                text(
-                    "A staff member will assist you once available.",
-                    NamedTextColor.GOLD)) // TODO: translate
-            .hoverEvent(
-                HoverEvent.showText(
-                    text(
-                        "Please be aware that we may not be able to fulfill all requests, but we will make every effort to provide assistance to the best of our ability.",
-                        NamedTextColor.GRAY)))
-            .build();
+    Component thanks = text()
+        .append(translatable("misc.thankYou", NamedTextColor.GREEN))
+        .append(space())
+        .append(text(
+            "A staff member will assist you once available.",
+            NamedTextColor.GOLD)) // TODO: translate
+        .hoverEvent(HoverEvent.showText(text(
+            "Please be aware that we may not be able to fulfill all requests, but we will make every effort to provide assistance to the best of our ability.",
+            NamedTextColor.GRAY)))
+        .build();
     Audience.get(player).sendMessage(thanks);
   }
 
   private void sendReportFeedback(Player player) {
-    Component thanks =
-        text()
-            .append(translatable("misc.thankYou", NamedTextColor.GREEN))
-            .append(space())
-            .append(translatable("moderation.report.acknowledge", NamedTextColor.GOLD))
-            .build();
+    Component thanks = text()
+        .append(translatable("misc.thankYou", NamedTextColor.GREEN))
+        .append(space())
+        .append(translatable("moderation.report.acknowledge", NamedTextColor.GOLD))
+        .build();
     Audience.get(player).sendMessage(thanks);
   }
 
@@ -311,30 +300,24 @@ public abstract class AssistanceFeatureBase extends FeatureBase implements Assis
   public void onPunishment(PlayerPunishmentEvent event) {
     if (!getReportConfig().isSenderNotified()) return;
 
-    List<Report> relatedReports =
-        recentReports.asMap().keySet().stream()
-            .filter(r -> r.getTargetId().equals(event.getPunishment().getTargetId()))
-            .filter(r -> !r.hasNotified())
-            .filter(
-                r ->
-                    !getReportConfig()
-                        .getReporyNotifyTime()
-                        .minus(Duration.between(r.getTime(), Instant.now()))
-                        .isNegative())
-            .collect(Collectors.toList());
+    List<Report> relatedReports = recentReports.asMap().keySet().stream()
+        .filter(r -> r.getTargetId().equals(event.getPunishment().getTargetId()))
+        .filter(r -> !r.hasNotified())
+        .filter(r -> !getReportConfig()
+            .getReporyNotifyTime()
+            .minus(Duration.between(r.getTime(), Instant.now()))
+            .isNegative())
+        .collect(Collectors.toList());
     Set<UUID> reporters =
         relatedReports.stream().map(r -> r.getSenderId()).collect(Collectors.toSet());
     for (UUID reporterId : reporters) {
       Player onlineReporter = Bukkit.getPlayer(reporterId);
       if (onlineReporter != null) {
         Audience.get(onlineReporter)
-            .sendMessage(
-                text()
-                    .append(
-                        text(
-                            "A player you recently reported has been punished. ",
-                            NamedTextColor.GOLD))
-                    .append(text("Thanks for the help!", NamedTextColor.GREEN)));
+            .sendMessage(text()
+                .append(
+                    text("A player you recently reported has been punished. ", NamedTextColor.GOLD))
+                .append(text("Thanks for the help!", NamedTextColor.GREEN)));
       }
     }
     for (Report report : relatedReports) {
