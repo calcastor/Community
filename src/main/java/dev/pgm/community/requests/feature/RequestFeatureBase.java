@@ -66,6 +66,7 @@ import tc.oc.pgm.api.map.Phase;
 import tc.oc.pgm.api.match.event.MatchFinishEvent;
 import tc.oc.pgm.api.match.event.MatchVoteFinishEvent;
 import tc.oc.pgm.events.PlayerJoinMatchEvent;
+import tc.oc.pgm.restart.RestartManager;
 import tc.oc.pgm.rotation.MapPoolManager;
 import tc.oc.pgm.rotation.vote.MapPoll;
 import tc.oc.pgm.rotation.vote.VotePoolOptions;
@@ -223,39 +224,40 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
     VotePoolOptions options = poolManager.getVoteOptions();
 
-    if (!sponsors.isEmpty() && options.canAddMap()) {
-      SponsorRequest nextRequest = getNextSponsor();
+    if (sponsors.isEmpty()) return;
+    if (!options.canAddMap()) return;
+    if (poolManager.getOverriderMap() != null) return;
 
-      if (nextRequest != null) {
-        // Notify PGM of sponsored map
-        options.addMap(nextRequest.getMap(), nextRequest.getPlayerId());
+    SponsorRequest nextRequest = getNextSponsor();
 
-        // Track the current sponsor
-        this.currentSponsor = nextRequest;
+    if (nextRequest != null) {
+      // Notify PGM of sponsored map
+      options.addMap(nextRequest.getMap(), nextRequest.getPlayerId());
 
-        // Update profile
-        getRequestProfile(nextRequest.getPlayerId()).thenAcceptAsync(profile -> {
-          // Update RequestProfile with sponsor map info
-          profile.sponsor(nextRequest.getMap());
-          update(profile);
-        });
+      // Track the current sponsor
+      this.currentSponsor = nextRequest;
 
-        // Alert online player if their sponsor request has been processed
-        Player requester = Bukkit.getPlayer(nextRequest.getPlayerId());
-        if (requester != null) {
-          Audience player = Audience.get(requester);
-          player.sendMessage(formatTokenTransaction(
-              -1,
-              text(
-                  "Your sponsored map has been added to the vote!",
-                  NamedTextColor.GREEN,
-                  TextDecoration.BOLD),
-              canRefund(requester)
-                  ? text(
-                      "If your map wins the vote, you'll get your token back", NamedTextColor.GRAY)
-                  : null));
-          player.playSound(Sounds.SPEND_TOKENS);
-        }
+      // Update profile
+      getRequestProfile(nextRequest.getPlayerId()).thenAcceptAsync(profile -> {
+        // Update RequestProfile with sponsor map info
+        profile.sponsor(nextRequest.getMap());
+        update(profile);
+      });
+
+      // Alert online player if their sponsor request has been processed
+      Player requester = Bukkit.getPlayer(nextRequest.getPlayerId());
+      if (requester != null) {
+        Audience player = Audience.get(requester);
+        player.sendMessage(formatTokenTransaction(
+            -1,
+            text(
+                "Your sponsored map has been added to the vote!",
+                NamedTextColor.GREEN,
+                TextDecoration.BOLD),
+            canRefund(requester)
+                ? text("If your map wins the vote, you'll get your token back", NamedTextColor.GRAY)
+                : null));
+        player.playSound(Sounds.SPEND_TOKENS);
       }
     }
   }
@@ -309,10 +311,16 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
   private Cache<UUID, String> voteConfirm =
       CacheBuilder.newBuilder().expireAfterWrite(10, TimeUnit.SECONDS).build();
 
+  private static final List<String> BLOCKED_COMMANDS =
+      List.of("/vote add", "/pgm:vote add", "/sn", "/setnext", "/pgm:sn", "/pgm:setnext");
+
+  public static boolean isBlockedCommand(String command) {
+    return BLOCKED_COMMANDS.stream().anyMatch(command::startsWith);
+  }
+
   @EventHandler
   public void onVoteAddCommand(PlayerCommandPreprocessEvent event) {
-    if (!event.getMessage().startsWith("/vote add")
-        && !event.getMessage().startsWith("/pgm:vote add")) return;
+    if (!isBlockedCommand(event.getMessage())) return;
     if (sponsors.isEmpty()) return;
     if (voteConfirm.getIfPresent(event.getPlayer().getUniqueId()) != null) return;
     event.setCancelled(true);
@@ -394,7 +402,14 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
     // Disallow Sponsor during map party
     if (isPartyActive()) {
-      viewer.sendWarning(text("Sorry, sponsoring is disabled during the party"));
+      viewer.sendWarning(text("Sorry, sponsoring is disabled during the party."));
+      return;
+    }
+
+    // Disallow Sponsor when a server restart is queued
+    if (isRestartQueued()) {
+      viewer.sendWarning(
+          text("Server will restart after this match. Please submit your request afterward."));
       return;
     }
 
@@ -402,7 +417,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     if (map.getPhase() != Phase.PRODUCTION) {
       viewer.sendWarning(text()
           .append(map.getStyledName(MapNameStyle.COLOR))
-          .append(text(" may not be selected"))
+          .append(text(" may not be selected."))
           .build());
       return;
     }
@@ -443,13 +458,13 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
     // Don't allow more than one map per sponsor
     if (isQueued(player.getUniqueId())) {
-      viewer.sendWarning(text("You already have a map in the sponsor queue"));
+      viewer.sendWarning(text("You already have a map in the sponsor queue."));
       return;
     }
 
     // Only allow a certain number of sponsors per the queue
     if (!isQueueOpen()) {
-      viewer.sendWarning(text("The sponsor queue is full! Please submit your request later"));
+      viewer.sendWarning(text("The sponsor queue is full! Please submit your request later."));
       return;
     }
 
@@ -462,7 +477,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
 
       // Check tokens
       if (profile.getSponsorTokens() < 1) {
-        viewer.sendWarning(text("You don't have enough sponsor tokens"));
+        viewer.sendWarning(text("You don't have enough sponsor tokens!"));
         return;
       }
 
@@ -489,10 +504,10 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
       } else {
         if (isBlitz()) {
           viewer.sendMessage(
-              text("Request will be added to the next non-blitz map vote", NamedTextColor.GRAY));
+              text("Request will be added to the next non-blitz map vote.", NamedTextColor.GRAY));
         } else {
           viewer.sendMessage(
-              text("Request will be added to the next map vote", NamedTextColor.GRAY));
+              text("Request will be added to the next map vote.", NamedTextColor.GRAY));
         }
       }
     });
@@ -874,6 +889,10 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
         .append(text(max, NamedTextColor.GOLD))
         .append(text(")", NamedTextColor.GRAY))
         .build();
+  }
+
+  private boolean isRestartQueued() {
+    return RestartManager.isQueued();
   }
 
   private void sendSuperVoterActivationFeedback(Player player) {
