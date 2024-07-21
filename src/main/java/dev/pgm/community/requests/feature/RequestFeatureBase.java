@@ -495,7 +495,7 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
             .append(text("Queue position "))
             .append(text("#" + sponsors.size(), NamedTextColor.YELLOW))
             .append(text(" Use "))
-            .append(text("/queue", NamedTextColor.AQUA))
+            .append(text("/sponsor queue", NamedTextColor.AQUA))
             .append(text(" to track status"))
             .color(NamedTextColor.GRAY)
             .clickEvent(ClickEvent.runCommand("/sponsor queue"))
