@@ -106,6 +106,10 @@ public interface CommunityPermissions {
   // Polls
   String POLL = ROOT + ".poll";
 
+  // Squads
+  String SQUAD = ROOT + ".squad"; // Access to squad commands
+  String SQUAD_CREATE = SQUAD + ".create"; // Can create a squad
+
   // General Commands
   String FLIGHT = ROOT + ".fly";
   String FLIGHT_SPEED = FLIGHT + ".speed";
