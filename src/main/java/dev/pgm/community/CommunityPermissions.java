@@ -73,6 +73,9 @@ public interface CommunityPermissions {
   String FREEZE_EXEMPT = FREEZE + ".exempt";
   String FREEZE_FORCE = FREEZE + ".force";
 
+  // Match History
+  String MATCH_HISTORY = ROOT + ".match-history";
+
   // Mutations
   String MUTATION = ROOT + ".mutation"; // Access to /mutate
 

@@ -327,6 +327,11 @@ polls:
 squads:
   # Set to true to enable squads, false to disable.
   enabled: true
+  
+# Match History - Feature that tracks completed PGM matches for easy lookup via command.
+history:
+  # Set to true to enable match history, false to disable.
+  enabled: true
 
 # Network - Features which assist in running Community on multiple servers  
 network:

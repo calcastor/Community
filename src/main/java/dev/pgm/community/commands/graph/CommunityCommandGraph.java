@@ -19,6 +19,7 @@ import dev.pgm.community.commands.providers.GameModeParser;
 import dev.pgm.community.commands.providers.TargetPlayerParser;
 import dev.pgm.community.freeze.FreezeCommand;
 import dev.pgm.community.friends.commands.FriendshipCommand;
+import dev.pgm.community.history.MatchHistoryCommand;
 import dev.pgm.community.mobs.MobCommand;
 import dev.pgm.community.moderation.commands.BanCommand;
 import dev.pgm.community.moderation.commands.KickCommand;
@@ -117,6 +118,9 @@ public class CommunityCommandGraph extends CommandGraph<Community> {
 
     // Friends
     register(new FriendshipCommand());
+
+    // History
+    register(new MatchHistoryCommand());
 
     // Mobs
     register(new MobCommand());

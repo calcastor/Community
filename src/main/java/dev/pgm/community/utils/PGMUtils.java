@@ -14,6 +14,7 @@ import tc.oc.pgm.api.PGM;
 import tc.oc.pgm.api.map.MapInfo;
 import tc.oc.pgm.api.match.Match;
 import tc.oc.pgm.api.match.MatchPhase;
+import tc.oc.pgm.api.player.MatchPlayer;
 import tc.oc.pgm.blitz.BlitzMatchModule;
 import tc.oc.pgm.rotation.MapPoolManager;
 import tc.oc.pgm.rotation.pools.MapPool;
@@ -172,5 +173,12 @@ public class PGMUtils {
       }
     }
     return Optional.empty();
+  }
+
+  public static List<MatchPlayer> getPlayers(String permissionFilter) {
+    if (!isPGMEnabled()) return Lists.newArrayList();
+    return getMatch().getPlayers().stream()
+        .filter(mp -> mp.getBukkit().hasPermission(permissionFilter))
+        .collect(Collectors.toList());
   }
 }

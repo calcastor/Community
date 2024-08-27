@@ -9,6 +9,7 @@ import dev.pgm.community.database.DatabaseConnection;
 import dev.pgm.community.freeze.FreezeFeature;
 import dev.pgm.community.friends.feature.FriendshipFeature;
 import dev.pgm.community.friends.feature.types.SQLFriendshipFeature;
+import dev.pgm.community.history.MatchHistoryFeature;
 import dev.pgm.community.info.InfoCommandsFeature;
 import dev.pgm.community.mobs.MobFeature;
 import dev.pgm.community.moderation.feature.ModerationFeature;
@@ -58,6 +59,7 @@ public class FeatureManager {
   private final MapPartyFeature party;
   private final PollFeature polls;
   private final SquadFeature squads;
+  private final MatchHistoryFeature history;
 
   public FeatureManager(
       Configuration config,
@@ -94,6 +96,7 @@ public class FeatureManager {
     this.party = new MapPartyFeature(config, logger);
     this.polls = new PollFeature(config, logger);
     this.squads = new SquadFeature(config, logger);
+    this.history = new MatchHistoryFeature(config, logger);
   }
 
   public AssistanceFeature getReports() {
@@ -172,6 +175,10 @@ public class FeatureManager {
     return squads;
   }
 
+  public MatchHistoryFeature getHistory() {
+    return history;
+  }
+
   public void reloadConfig(Configuration config) {
     // Reload all config values here
     getReports().getConfig().reload(config);
@@ -192,6 +199,8 @@ public class FeatureManager {
     getParty().getConfig().reload(config);
     getPolls().getConfig().reload(config);
     getSquads().getConfig().reload(config);
+    getHistory().getConfig().reload(config);
+
     // TODO: Look into maybe unregister commands for features that have been disabled
     // commands#unregisterCommand
     // Will need to check isEnabled
@@ -216,5 +225,6 @@ public class FeatureManager {
     if (getParty().isEnabled()) getParty().disable();
     if (getPolls().isEnabled()) getPolls().disable();
     if (getSquads().isEnabled()) getSquads().disable();
+    if (getHistory().isEnabled()) getHistory().disable();
   }
 }
