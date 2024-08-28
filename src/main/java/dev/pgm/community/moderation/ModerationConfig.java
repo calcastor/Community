@@ -42,6 +42,8 @@ public class ModerationConfig extends FeatureConfigImpl {
   private static final String PLAYER_HOOK_KEY = TOOLS_KEY + ".player-hook";
   private static final String LOOKUP_SIGN_KEY = TOOLS_KEY + ".lookup-sign";
 
+  private static final String SIGN_LOGGER_KEY = KEY + ".sign-logger";
+
   // General options
   private boolean persist;
   private boolean broadcast;
@@ -87,6 +89,9 @@ public class ModerationConfig extends FeatureConfigImpl {
   private int modMenuSlot;
   private int playerHookSlot;
   private int lookupSignSlot;
+
+  // Sign Logger
+  private boolean signLoggerEnabled;
 
   /**
    * Config options related to {@link ModerationFeature}
@@ -251,6 +256,10 @@ public class ModerationConfig extends FeatureConfigImpl {
     return staffBroadcastFormat;
   }
 
+  public boolean isSignLoggerEnabled() {
+    return signLoggerEnabled;
+  }
+
   @Override
   public void reload(Configuration config) {
     super.reload(config);
@@ -299,5 +308,8 @@ public class ModerationConfig extends FeatureConfigImpl {
     this.modMenuSlot = config.getInt(getItemSlotKey(MOD_MENU_KEY));
     this.playerHookSlot = config.getInt(getItemSlotKey(PLAYER_HOOK_KEY));
     this.lookupSignSlot = config.getInt(getItemSlotKey(LOOKUP_SIGN_KEY));
+
+    // Sign Logger
+    this.signLoggerEnabled = config.getBoolean(getEnabledKey(SIGN_LOGGER_KEY));
   }
 }

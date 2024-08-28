@@ -78,6 +78,10 @@ moderation:
     enabled: true
     public: true
         
+  # Sign Logging
+  sign-logger:
+    enabled: true
+      
   #Logins
   login-timeout: 30
   

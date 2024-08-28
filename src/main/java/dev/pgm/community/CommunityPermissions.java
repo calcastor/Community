@@ -27,6 +27,9 @@ public interface CommunityPermissions {
   String PUNISHMENT_BROADCASTS =
       ROOT + ".view-punishments"; // Access to view when punishments are broadcast silently
 
+  // Sign Logger
+  String SIGN_LOG_BROADCASTS = ROOT + ".view-sign-logs"; // Access to view when signs are placed
+
   // Reports
   String REPORTS = ROOT + ".reports"; // Access to view report broadcast & report history
   String REPORT_BROADCASTS = REPORTS + ".view-broadcasts"; // Access to view report broadcasts
