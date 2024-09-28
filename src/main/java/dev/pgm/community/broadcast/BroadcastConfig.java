@@ -3,11 +3,11 @@ package dev.pgm.community.broadcast;
 import static tc.oc.pgm.util.text.TextParser.parseComponent;
 
 import dev.pgm.community.feature.config.FeatureConfigImpl;
+import dev.pgm.community.utils.MessageUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 import net.kyori.adventure.text.Component;
 import org.bukkit.configuration.Configuration;
-import tc.oc.pgm.util.text.TextParser;
 
 public class BroadcastConfig extends FeatureConfigImpl {
 
@@ -69,9 +69,8 @@ public class BroadcastConfig extends FeatureConfigImpl {
     this.announceEnabled = config.getBoolean(getAnnounceKey() + ".enabled");
     this.announceDelay = config.getInt(getAnnounceKey() + ".delay-seconds");
     this.announcePrefix = parseComponent(config.getString(getAnnounceKey() + ".prefix"));
-    this.announceMessages =
-        config.getStringList(getAnnounceKey() + ".messages").stream()
-            .map(TextParser::parseComponent)
-            .collect(Collectors.toList());
+    this.announceMessages = config.getStringList(getAnnounceKey() + ".messages").stream()
+        .map(MessageUtils::parseComponentWithURL)
+        .collect(Collectors.toList());
   }
 }

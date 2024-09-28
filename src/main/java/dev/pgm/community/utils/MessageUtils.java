@@ -9,9 +9,11 @@ import dev.pgm.community.Community;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
+import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -19,6 +21,8 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.ChatColor;
 import tc.oc.pgm.util.LegacyFormatUtils;
 import tc.oc.pgm.util.bukkit.BukkitUtils;
+import tc.oc.pgm.util.text.TextException;
+import tc.oc.pgm.util.text.TextParser;
 import tc.oc.pgm.util.text.TextTranslations;
 
 public class MessageUtils {
@@ -109,5 +113,31 @@ public class MessageUtils {
   public static String format(String format, Object... args) {
     return String.format(
         ChatColor.translateAlternateColorCodes('&', format != null ? format : ""), args);
+  }
+
+  public static Component parseComponentWithURL(String line) {
+    try {
+      Component parsedComponent = TextParser.parseComponent(line);
+      return addUrlEventsToComponent(parsedComponent);
+    } catch (TextException e) {
+      e.printStackTrace();
+      return Component.text(line); // Fallback if error
+    }
+  }
+
+  private static final Pattern URL_PATTERN = Pattern.compile(
+      "(https?://[\\w\\-\\.]+(:\\d+)?(/[\\w\\-\\./?%&=]*)?)", Pattern.CASE_INSENSITIVE);
+
+  private static Component addUrlEventsToComponent(Component component) {
+    return component.replaceText(
+        builder -> builder.match(URL_PATTERN).replacement((matchResult, textComponentBuilder) -> {
+          String url = matchResult.group();
+          return Component.text(url)
+              .color(NamedTextColor.BLUE)
+              .hoverEvent(HoverEvent.showText(Component.text()
+                  .append(Component.text("Click to open ", NamedTextColor.GRAY))
+                  .append(Component.text(url, NamedTextColor.BLUE))))
+              .clickEvent(ClickEvent.openUrl(url));
+        }));
   }
 }
