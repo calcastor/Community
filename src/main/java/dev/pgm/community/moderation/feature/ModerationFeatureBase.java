@@ -420,10 +420,8 @@ public abstract class ModerationFeatureBase extends FeatureBase implements Moder
   private void logSign(Player player, String[] lines, Location location) {
     if (!getModerationConfig().isSignLoggerEnabled()) return;
 
-    int totalChars = 0;
-    for (String line : lines) {
-      totalChars += line.length();
-    }
+    int totalChars =
+        Arrays.stream(lines).mapToInt(line -> line.replace(" ", "").length()).sum();
 
     if (totalChars < 4) return; // Don't track signs with barely any text
 
