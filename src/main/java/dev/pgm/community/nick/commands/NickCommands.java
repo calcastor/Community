@@ -57,21 +57,16 @@ public class NickCommands extends CommunityCommand {
       CommandAudience viewer, @Flag(value = "target", aliases = "t") String target) {
     // Check nick status of other players
     if (viewer.hasPermission(CommunityPermissions.NICKNAME_OTHER) && target != null) {
-      getTarget(target, users)
-          .thenAcceptAsync(
-              uuid -> {
-                if (uuid.isPresent()) {
-                  users
-                      .renderUsername(uuid, NameStyle.FANCY)
-                      .thenAcceptAsync(
-                          name -> {
-                            sendNickStatus(viewer, viewer.getPlayer(), uuid.get(), name);
-                            return;
-                          });
-                } else {
-                  viewer.sendWarning(formatNotFoundComponent(target));
-                }
-              });
+      getTarget(target, users).thenAcceptAsync(uuid -> {
+        if (uuid.isPresent()) {
+          users.renderUsername(uuid, NameStyle.FANCY).thenAcceptAsync(name -> {
+            sendNickStatus(viewer, viewer.getPlayer(), uuid.get(), name);
+            return;
+          });
+        } else {
+          viewer.sendWarning(formatNotFoundComponent(target));
+        }
+      });
     } else {
       if (!viewer.isPlayer()) return;
 
@@ -86,93 +81,78 @@ public class NickCommands extends CommunityCommand {
   @Permission(CommunityPermissions.NICKNAME)
   public void setRandomNick(
       CommandAudience viewer, Player sender, @Argument("page") @Default("1") int page) {
-    nicks
-        .getNickSelection(sender.getUniqueId())
-        .thenAcceptAsync(
-            names -> {
-              List<String> selection = names.getNames();
+    nicks.getNickSelection(sender.getUniqueId()).thenAcceptAsync(names -> {
+      List<String> selection = names.getNames();
 
-              int resultsPerPage = 8;
-              int pages = (selection.size() + resultsPerPage - 1) / resultsPerPage;
+      int resultsPerPage = 8;
+      int pages = (selection.size() + resultsPerPage - 1) / resultsPerPage;
 
-              Component formattedTitle =
-                  TextFormatter.horizontalLineHeading(
-                      viewer.getSender(), text("Select a nickname"), NamedTextColor.DARK_AQUA, 250);
+      Component formattedTitle = TextFormatter.horizontalLineHeading(
+          viewer.getSender(), text("Select a nickname"), NamedTextColor.DARK_AQUA, 250);
 
-              new PaginatedComponentResults<String>(formattedTitle, resultsPerPage) {
-                @Override
-                public Component format(String nick, int index) {
-                  return text()
-                      .append(text(" - ", NamedTextColor.GOLD))
-                      .append(text(nick, NamedTextColor.YELLOW))
-                      .hoverEvent(
-                          HoverEvent.showText(
-                              text("Click to set nick to ", NamedTextColor.GRAY)
-                                  .append(text(nick, NamedTextColor.YELLOW))))
-                      .clickEvent(ClickEvent.runCommand("/nick confirm " + nick))
-                      .color(NamedTextColor.GRAY)
-                      .build();
-                }
+      new PaginatedComponentResults<String>(formattedTitle, resultsPerPage) {
+        @Override
+        public Component format(String nick, int index) {
+          return text()
+              .append(text(" - ", NamedTextColor.GOLD))
+              .append(text(nick, NamedTextColor.YELLOW))
+              .hoverEvent(HoverEvent.showText(text("Click to set nick to ", NamedTextColor.GRAY)
+                  .append(text(nick, NamedTextColor.YELLOW))))
+              .clickEvent(ClickEvent.runCommand("/nick confirm " + nick))
+              .color(NamedTextColor.GRAY)
+              .build();
+        }
 
-                @Override
-                public Component formatEmpty() {
-                  return text("Issue loading names, please try again!", NamedTextColor.RED);
-                }
-              }.display(viewer.getAudience(), selection, page);
+        @Override
+        public Component formatEmpty() {
+          return text("Issue loading names, please try again!", NamedTextColor.RED);
+        }
+      }.display(viewer.getAudience(), selection, page);
 
-              // Add page button when more than 1 page
-              if (pages > 1) {
-                TextComponent.Builder buttons = text();
+      // Add page button when more than 1 page
+      if (pages > 1) {
+        TextComponent.Builder buttons = text();
 
-                if (page > 1) {
-                  buttons.append(
-                      text()
-                          .append(text("Click for more names", NamedTextColor.BLUE))
-                          .hoverEvent(
-                              HoverEvent.showText(
-                                  text("Click to refresh nick selection", NamedTextColor.GRAY)))
-                          .clickEvent(ClickEvent.runCommand("/nick random " + (page - 1))));
-                }
+        if (page > 1) {
+          buttons.append(text()
+              .append(text("Click for more names", NamedTextColor.BLUE))
+              .hoverEvent(
+                  HoverEvent.showText(text("Click to refresh nick selection", NamedTextColor.GRAY)))
+              .clickEvent(ClickEvent.runCommand("/nick random " + (page - 1))));
+        }
 
-                if (page > 1 && page < pages) {
-                  buttons.append(text(" | ", NamedTextColor.DARK_GRAY));
-                }
+        if (page > 1 && page < pages) {
+          buttons.append(text(" | ", NamedTextColor.DARK_GRAY));
+        }
 
-                if (page < pages) {
-                  buttons.append(
-                      text()
-                          .append(text("Click for more names", NamedTextColor.BLUE))
-                          .hoverEvent(
-                              HoverEvent.showText(
-                                  text("Click to refresh nick selection", NamedTextColor.GRAY)))
-                          .clickEvent(ClickEvent.runCommand("/nick random " + (page + 1))));
-                }
-                viewer.sendMessage(
-                    TextFormatter.horizontalLineHeading(
-                        viewer.getSender(), buttons.build(), NamedTextColor.DARK_AQUA, 250));
-              }
-            });
+        if (page < pages) {
+          buttons.append(text()
+              .append(text("Click for more names", NamedTextColor.BLUE))
+              .hoverEvent(
+                  HoverEvent.showText(text("Click to refresh nick selection", NamedTextColor.GRAY)))
+              .clickEvent(ClickEvent.runCommand("/nick random " + (page + 1))));
+        }
+        viewer.sendMessage(TextFormatter.horizontalLineHeading(
+            viewer.getSender(), buttons.build(), NamedTextColor.DARK_AQUA, 250));
+      }
+    });
   }
 
   @Command("confirm <name>")
   @CommandDescription("Confirm random nickname choice")
   public void selectNick(CommandAudience viewer, Player sender, @Argument("name") String name) {
-    nicks
-        .getNickSelection(sender.getUniqueId())
-        .thenAcceptAsync(
-            selection -> {
-              if (!selection.isValid(name)) {
-                viewer.sendWarning(
-                    text()
-                        .append(text(name, NamedTextColor.YELLOW))
-                        .append(text(" is not a valid nick"))
-                        .build());
-                viewer.sendWarning(text("Please select one below:", NamedTextColor.RED));
-                setRandomNick(viewer, sender, 1);
-                return;
-              }
-              setOwnNick(viewer, sender, name);
-            });
+    nicks.getNickSelection(sender.getUniqueId()).thenAcceptAsync(selection -> {
+      if (!selection.isValid(name)) {
+        viewer.sendWarning(text()
+            .append(text(name, NamedTextColor.YELLOW))
+            .append(text(" is not a valid nick"))
+            .build());
+        viewer.sendWarning(text("Please select one below:", NamedTextColor.RED));
+        setRandomNick(viewer, sender, 1);
+        return;
+      }
+      setOwnNick(viewer, sender, name);
+    });
   }
 
   @Command("skin <name>")
@@ -186,29 +166,23 @@ public class NickCommands extends CommunityCommand {
       return;
     }
 
-    WebUtils.getSkin(name)
-        .thenAcceptAsync(
-            skin -> {
-              if (skin == null) {
-                viewer.sendWarning(
-                    text()
-                        .append(text("No skin was found for "))
-                        .append(text(name, NamedTextColor.AQUA))
-                        .build());
-                return;
-              }
-              // Run sync
-              Bukkit.getScheduler()
-                  .runTask(
-                      Community.get(),
-                      () -> nicks.getSkinManager().setSkin(viewer.getPlayer(), skin));
-              viewer.sendMessage(
-                  text()
-                      .append(text("You have set your custom skin to "))
-                      .append(text(name, NamedTextColor.AQUA))
-                      .color(NamedTextColor.GRAY)
-                      .build());
-            });
+    WebUtils.getSkin(name).thenAcceptAsync(skin -> {
+      if (skin == null) {
+        viewer.sendWarning(text()
+            .append(text("No skin was found for "))
+            .append(text(name, NamedTextColor.AQUA))
+            .build());
+        return;
+      }
+      // Run sync
+      Bukkit.getScheduler()
+          .runTask(Community.get(), () -> nicks.getSkinManager().setSkin(viewer.getPlayer(), skin));
+      viewer.sendMessage(text()
+          .append(text("You have set your custom skin to "))
+          .append(text(name, NamedTextColor.AQUA))
+          .color(NamedTextColor.GRAY)
+          .build());
+    });
   }
 
   // /nick set [name]
@@ -224,42 +198,33 @@ public class NickCommands extends CommunityCommand {
     // Ensure nickname conforms to minecraft standards
     validateNick(nick);
 
-    nicks
-        .setNick(viewer.getPlayer().getUniqueId(), nick)
-        .thenAcceptAsync(
-            success -> {
-              if (success) {
-                Component header =
-                    TextFormatter.horizontalLine(NamedTextColor.GRAY, TextFormatter.MAX_CHAT_WIDTH);
+    nicks.setNick(viewer.getPlayer().getUniqueId(), nick).thenAcceptAsync(success -> {
+      if (success) {
+        Component header =
+            TextFormatter.horizontalLine(NamedTextColor.GRAY, TextFormatter.MAX_CHAT_WIDTH);
 
-                Component msg =
-                    text()
-                        .append(text("You have set your nickname to "))
-                        .append(text(nick, NamedTextColor.AQUA, TextDecoration.BOLD))
-                        .append(newline())
-                        .append(
-                            text(
-                                "Your nickname will be active upon next login",
-                                NamedTextColor.GREEN))
-                        .color(NamedTextColor.GRAY)
-                        .build();
+        Component msg = text()
+            .append(text("You have set your nickname to "))
+            .append(text(nick, NamedTextColor.AQUA, TextDecoration.BOLD))
+            .append(newline())
+            .append(text("Your nickname will be active upon next login", NamedTextColor.GREEN))
+            .color(NamedTextColor.GRAY)
+            .build();
 
-                viewer.sendMessage(
-                    text()
-                        .append(header)
-                        .append(newline())
-                        .append(msg)
-                        .append(newline())
-                        .append(header)
-                        .build());
-              } else {
-                viewer.sendWarning(
-                    text()
-                        .append(text("Could not set nickname to "))
-                        .append(text(nick, NamedTextColor.AQUA))
-                        .build());
-              }
-            });
+        viewer.sendMessage(text()
+            .append(header)
+            .append(newline())
+            .append(msg)
+            .append(newline())
+            .append(header)
+            .build());
+      } else {
+        viewer.sendWarning(text()
+            .append(text("Could not set nickname to "))
+            .append(text(nick, NamedTextColor.AQUA))
+            .build());
+      }
+    });
   }
 
   @Command("setother <target> <nick>")
@@ -270,45 +235,31 @@ public class NickCommands extends CommunityCommand {
       @Argument("target") TargetPlayer target,
       @Argument("nick") String nick) {
     validateNick(nick);
-    getTarget(target.getIdentifier(), users)
-        .thenAcceptAsync(
-            uuid -> {
-              if (uuid.isPresent()) {
-                nicks
-                    .setNick(uuid.get(), nick)
-                    .thenAcceptAsync(
-                        success -> {
-                          if (success) {
-                            users
-                                .renderUsername(uuid, NameStyle.FANCY)
-                                .thenAcceptAsync(
-                                    name -> {
-                                      viewer.sendMessage(
-                                          text()
-                                              .append(text("Nickname for "))
-                                              .append(name)
-                                              .append(text(" set to "))
-                                              .append(
-                                                  text(
-                                                      nick,
-                                                      NamedTextColor.AQUA,
-                                                      TextDecoration.BOLD))
-                                              .color(NamedTextColor.GRAY)
-                                              .build());
-                                    });
-                          } else {
-                            viewer.sendWarning(
-                                text()
-                                    .append(text("Could not set nickname for "))
-                                    .append(text(target.getIdentifier(), NamedTextColor.AQUA))
-                                    .build());
-                          }
-                        });
-
-              } else {
-                viewer.sendWarning(formatNotFoundComponent(target.getIdentifier()));
-              }
+    getTarget(target.getIdentifier(), users).thenAcceptAsync(uuid -> {
+      if (uuid.isPresent()) {
+        nicks.setNick(uuid.get(), nick).thenAcceptAsync(success -> {
+          if (success) {
+            users.renderUsername(uuid, NameStyle.FANCY).thenAcceptAsync(name -> {
+              viewer.sendMessage(text()
+                  .append(text("Nickname for "))
+                  .append(name)
+                  .append(text(" set to "))
+                  .append(text(nick, NamedTextColor.AQUA, TextDecoration.BOLD))
+                  .color(NamedTextColor.GRAY)
+                  .build());
             });
+          } else {
+            viewer.sendWarning(text()
+                .append(text("Could not set nickname for "))
+                .append(text(target.getIdentifier(), NamedTextColor.AQUA))
+                .build());
+          }
+        });
+
+      } else {
+        viewer.sendWarning(formatNotFoundComponent(target.getIdentifier()));
+      }
+    });
   }
 
   @Command("clear [target]")
@@ -316,71 +267,54 @@ public class NickCommands extends CommunityCommand {
   public void clearNick(CommandAudience viewer, @Argument("target") TargetPlayer target) {
     // Clear other user names
     if (viewer.hasPermission(CommunityPermissions.NICKNAME_CLEAR) && target != null) {
-      getTarget(target.getIdentifier(), users)
-          .thenAcceptAsync(
-              uuid -> {
-                if (uuid.isPresent()) {
-                  users
-                      .renderUsername(uuid, NameStyle.FANCY)
-                      .thenAcceptAsync(
-                          name -> {
-                            nicks
-                                .clearNick(uuid.get())
-                                .thenAcceptAsync(
-                                    success -> {
-                                      Component setName =
-                                          text()
-                                              .append(text("You have reset the nickname of "))
-                                              .append(name)
-                                              .color(NamedTextColor.GREEN)
-                                              .build();
-                                      Component noName =
-                                          text()
-                                              .append(name)
-                                              .append(text(" does not have a nickname set"))
-                                              .color(NamedTextColor.RED)
-                                              .build();
-                                      viewer.sendWarning(success ? setName : noName);
-                                    });
-                          });
-                } else {
-                  viewer.sendWarning(formatNotFoundComponent(target.getIdentifier()));
-                }
-              });
+      getTarget(target.getIdentifier(), users).thenAcceptAsync(uuid -> {
+        if (uuid.isPresent()) {
+          users.renderUsername(uuid, NameStyle.FANCY).thenAcceptAsync(name -> {
+            nicks.clearNick(uuid.get()).thenAcceptAsync(success -> {
+              Component setName = text()
+                  .append(text("You have reset the nickname of "))
+                  .append(name)
+                  .color(NamedTextColor.GREEN)
+                  .build();
+              Component noName = text()
+                  .append(name)
+                  .append(text(" does not have a nickname set"))
+                  .color(NamedTextColor.RED)
+                  .build();
+              viewer.sendWarning(success ? setName : noName);
+            });
+          });
+        } else {
+          viewer.sendWarning(formatNotFoundComponent(target.getIdentifier()));
+        }
+      });
       return;
     }
 
     if (!viewer.isPlayer()) return;
 
     // Reset own nickname
-    nicks
-        .clearNick(viewer.getPlayer().getUniqueId())
-        .thenAcceptAsync(
-            success -> {
-              viewer.sendWarning(
-                  text(
-                      success ? "You have reset your nickname" : "You do not have a nickname set",
-                      success ? NamedTextColor.GRAY : NamedTextColor.RED));
-            });
+    nicks.clearNick(viewer.getPlayer().getUniqueId()).thenAcceptAsync(success -> {
+      viewer.sendWarning(text(
+          success ? "You have reset your nickname" : "You do not have a nickname set",
+          success ? NamedTextColor.GRAY : NamedTextColor.RED));
+    });
   }
 
   @Command("toggle")
   @CommandDescription("Toggle your nickname status")
   public void enableNick(CommandAudience viewer, Player sender) {
     nicks
-        .toggleNick(sender.getUniqueId())
-        .thenAcceptAsync(
-            result ->
-                viewer.sendWarning(
-                    text()
-                        .append(text("You have "))
-                        .append(
-                            result
-                                ? text("enabled", NamedTextColor.GREEN)
-                                : text("disabled", NamedTextColor.RED))
-                        .append(text(" your nickname."))
-                        .color(NamedTextColor.GRAY)
-                        .build()));
+        .toggleNickStatus(sender.getUniqueId())
+        .thenAcceptAsync(result -> viewer.sendWarning(text()
+            .append(text("You have "))
+            .append(
+                result
+                    ? text("enabled", NamedTextColor.GREEN)
+                    : text("disabled", NamedTextColor.RED))
+            .append(text(" your nickname."))
+            .color(NamedTextColor.GRAY)
+            .build()));
   }
 
   @ProxiedBy("nicks")
@@ -388,24 +322,22 @@ public class NickCommands extends CommunityCommand {
   @CommandDescription("View a list of online nicked players")
   public void viewNicks(CommandAudience viewer) {
     boolean staff = viewer.hasPermission(CommunityPermissions.STAFF);
-    List<Component> nickedNames =
-        Bukkit.getOnlinePlayers().stream()
-            .filter(player -> staff || Integration.isFriend(player, viewer.getPlayer()))
-            .filter(player -> nicks.isNicked(player.getUniqueId()))
-            .map(player -> PlayerComponent.player(player, NameStyle.VERBOSE))
-            .collect(Collectors.toList());
+    List<Component> nickedNames = Bukkit.getOnlinePlayers().stream()
+        .filter(player -> staff || Integration.isFriend(player, viewer.getPlayer()))
+        .filter(player -> nicks.isNicked(player.getUniqueId()))
+        .map(player -> PlayerComponent.player(player, NameStyle.VERBOSE))
+        .collect(Collectors.toList());
 
     if (nickedNames.isEmpty()) {
       viewer.sendWarning(text("No online players are nicked!"));
       return;
     }
 
-    Component count =
-        text()
-            .append(text("Nicked", NamedTextColor.DARK_AQUA))
-            .append(text(": "))
-            .append(text(nickedNames.size()))
-            .build();
+    Component count = text()
+        .append(text("Nicked", NamedTextColor.DARK_AQUA))
+        .append(text(": "))
+        .append(text(nickedNames.size()))
+        .build();
     Component nameList = TextFormatter.list(nickedNames, NamedTextColor.GRAY);
 
     viewer.sendMessage(count);
@@ -415,89 +347,69 @@ public class NickCommands extends CommunityCommand {
   private void sendNickStatus(
       CommandAudience viewer, @Nullable Player sender, UUID targetId, Component targetName) {
     final boolean self = sender != null && sender.getUniqueId().equals(targetId);
-    nicks
-        .getNick(targetId)
-        .thenAcceptAsync(
-            nick -> {
-              if (nick == null || nick.getName().isEmpty()) {
-                if (self) {
-                  // No nickname set, then random one will be assigned
-                  setRandomNick(viewer, sender, 1);
-                } else {
-                  // Other target has no nickname
-                  viewer.sendWarning(
-                      text()
-                          .append(targetName)
-                          .append(text(" does not have a nickname set"))
-                          .build());
-                }
-                return;
-              }
+    nicks.getNick(targetId).thenAcceptAsync(nick -> {
+      if (nick == null || nick.getName().isEmpty()) {
+        if (self) {
+          // No nickname set, then random one will be assigned
+          setRandomNick(viewer, sender, 1);
+        } else {
+          // Other target has no nickname
+          viewer.sendWarning(text()
+              .append(targetName)
+              .append(text(" does not have a nickname set"))
+              .build());
+        }
+        return;
+      }
 
-              Component newName =
-                  createTextButton(
-                      "New",
-                      "/nick random",
-                      "&7Click to recieve a new nickname",
-                      NamedTextColor.AQUA);
+      Component newName = createTextButton(
+          "New", "/nick random", "&7Click to recieve a new nickname", NamedTextColor.AQUA);
 
-              // Only display toggle to users who can set a custom nickname
-              Component toggle =
-                  createTextButton(
-                      "Toggle",
-                      "/nick toggle",
-                      "&7Click to "
-                          + (nick.isEnabled() ? "&cdisable" : "&aenable")
-                          + "&7 your nickname",
-                      nick.isEnabled() ? NamedTextColor.RED : NamedTextColor.GREEN);
+      // Only display toggle to users who can set a custom nickname
+      Component toggle = createTextButton(
+          "Toggle",
+          "/nick toggle",
+          "&7Click to " + (nick.isEnabled() ? "&cdisable" : "&aenable") + "&7 your nickname",
+          nick.isEnabled() ? NamedTextColor.RED : NamedTextColor.GREEN);
 
-              Component clear =
-                  createTextButton(
-                      "Clear",
-                      "/nick clear",
-                      "Click to clear your nickname",
-                      NamedTextColor.DARK_RED);
+      Component clear = createTextButton(
+          "Clear", "/nick clear", "Click to clear your nickname", NamedTextColor.DARK_RED);
 
-              TextComponent.Builder statusMsg =
-                  text()
-                      .append(text("Nickname: ("))
-                      .append(text(nick.getName(), NamedTextColor.AQUA))
-                      .append(text(") Status: "))
-                      .append(
-                          text(
-                              nick.isEnabled() ? "Enabled" : "Disabled",
-                              nick.isEnabled() ? NamedTextColor.GREEN : NamedTextColor.RED));
+      TextComponent.Builder statusMsg = text()
+          .append(text("Nickname: ("))
+          .append(text(nick.getName(), NamedTextColor.AQUA))
+          .append(text(") Status: "))
+          .append(text(
+              nick.isEnabled() ? "Enabled" : "Disabled",
+              nick.isEnabled() ? NamedTextColor.GREEN : NamedTextColor.RED));
 
-              if (self) {
-                statusMsg
-                    .append(space())
-                    .append(newName)
-                    .append(space())
-                    .append(toggle)
-                    .append(space())
-                    .append(clear);
-              }
-              if (!self)
-                viewer.sendMessage(
-                    text()
-                        .append(text("Nick Status for ", NamedTextColor.GRAY))
-                        .append(targetName)
-                        .build());
-              viewer.sendMessage(statusMsg.color(NamedTextColor.GRAY).build());
+      if (self) {
+        statusMsg
+            .append(space())
+            .append(newName)
+            .append(space())
+            .append(toggle)
+            .append(space())
+            .append(clear);
+      }
+      if (!self)
+        viewer.sendMessage(text()
+            .append(text("Nick Status for ", NamedTextColor.GRAY))
+            .append(targetName)
+            .build());
+      viewer.sendMessage(statusMsg.color(NamedTextColor.GRAY).build());
 
-              // Alert user about nickname updates
-              if (self) {
-                if (!nicks.isNicked(viewer.getPlayer().getUniqueId()) && nick.isEnabled()) {
-                  viewer.sendWarning(
-                      text(
-                          "Your nickname will be active upon your next login",
-                          NamedTextColor.GREEN));
-                } else if (nicks.isNicked(viewer.getPlayer().getUniqueId()) && !nick.isEnabled()) {
-                  viewer.sendMessage(
-                      text("Your nickname will be removed once you logout", NamedTextColor.RED));
-                }
-              }
-            });
+      // Alert user about nickname updates
+      if (self) {
+        if (!nicks.isNicked(viewer.getPlayer().getUniqueId()) && nick.isEnabled()) {
+          viewer.sendWarning(
+              text("Your nickname will be active upon your next login", NamedTextColor.GREEN));
+        } else if (nicks.isNicked(viewer.getPlayer().getUniqueId()) && !nick.isEnabled()) {
+          viewer.sendMessage(
+              text("Your nickname will be removed once you logout", NamedTextColor.RED));
+        }
+      }
+    });
   }
 
   private Component createTextButton(

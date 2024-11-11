@@ -59,7 +59,8 @@ public abstract class NickFeatureBase extends FeatureBase implements NickFeature
     this.autoNicked = Lists.newArrayList();
     this.skins = new SkinManager();
 
-    this.nickChoices = CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
+    this.nickChoices =
+        CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
 
     if (getNickConfig().isEnabled() && PGMUtils.isPGMEnabled()) {
       enable();
@@ -109,11 +110,10 @@ public abstract class NickFeatureBase extends FeatureBase implements NickFeature
 
   @Override
   public Player getPlayerFromNick(String nickName) {
-    Optional<UUID> player =
-        nickedPlayers.entrySet().stream()
-            .filter((e) -> e.getValue().equalsIgnoreCase(nickName))
-            .map(Entry::getKey)
-            .findAny();
+    Optional<UUID> player = nickedPlayers.entrySet().stream()
+        .filter((e) -> e.getValue().equalsIgnoreCase(nickName))
+        .map(Entry::getKey)
+        .findAny();
     return player.isPresent() ? Bukkit.getPlayer(player.get()) : null;
   }
 
@@ -123,13 +123,11 @@ public abstract class NickFeatureBase extends FeatureBase implements NickFeature
     if (cached != null && !cached.canRefresh()) {
       return CompletableFuture.completedFuture(cached);
     }
-    return WebUtils.getRandomNameList(16)
-        .thenApplyAsync(
-            names -> {
-              NickSelection selection = new NickSelection(names);
-              nickChoices.put(playerId, selection);
-              return selection;
-            });
+    return WebUtils.getRandomNameList(16).thenApplyAsync(names -> {
+      NickSelection selection = new NickSelection(names);
+      nickChoices.put(playerId, selection);
+      return selection;
+    });
   }
 
   @EventHandler(priority = EventPriority.MONITOR)
@@ -153,8 +151,10 @@ public abstract class NickFeatureBase extends FeatureBase implements NickFeature
   public void onJoin(PlayerJoinEvent event) {
     Player player = event.getPlayer();
 
+    // Disable nickname if the player does not have the proper permission
     if (!player.hasPermission(CommunityPermissions.NICKNAME)) {
       if (nickedPlayers.containsKey(player.getUniqueId())) {
+        setNickStatus(player.getUniqueId(), false);
         nickedPlayers.remove(player.getUniqueId());
       }
       return;
@@ -165,38 +165,31 @@ public abstract class NickFeatureBase extends FeatureBase implements NickFeature
       loginSubdomains.invalidate(player.getUniqueId());
       autoNicked.add(player.getUniqueId());
 
-      getNick(player.getUniqueId())
-          .thenAcceptAsync(
-              nick -> {
-                if (nick != null) {
-                  if (!nick.getName().isEmpty()) {
-                    nickedPlayers.put(player.getUniqueId(), nick.getName());
-                    sendLoginNotification(player, nick.getName(), false);
-                  } else {
-                    // Auto apply a random name if none set
-                    WebUtils.getRandomName()
-                        .thenAcceptAsync(
-                            name -> {
-                              this.setNick(player.getUniqueId(), name)
-                                  .thenAcceptAsync(
-                                      success -> {
-                                        if (success) {
-                                          nickedPlayers.put(player.getUniqueId(), nick.getName());
-                                          Audience.get(player)
-                                              .sendWarning(
-                                                  text(
-                                                      "You had no nickname, so a random one has been assigned",
-                                                      NamedTextColor.GREEN));
-                                          sendLoginNotification(player, nick.getName(), true);
-                                        }
-                                      });
-                            });
-                  }
-
-                } else {
-                  nickedPlayers.remove(player.getUniqueId());
+      getNick(player.getUniqueId()).thenAcceptAsync(nick -> {
+        if (nick != null) {
+          if (!nick.getName().isEmpty()) {
+            nickedPlayers.put(player.getUniqueId(), nick.getName());
+            sendLoginNotification(player, nick.getName(), false);
+          } else {
+            // Auto apply a random name if none set
+            WebUtils.getRandomName().thenAcceptAsync(name -> {
+              this.setNick(player.getUniqueId(), name).thenAcceptAsync(success -> {
+                if (success) {
+                  nickedPlayers.put(player.getUniqueId(), nick.getName());
+                  Audience.get(player)
+                      .sendWarning(text(
+                          "You had no nickname, so a random one has been assigned",
+                          NamedTextColor.GREEN));
+                  sendLoginNotification(player, nick.getName(), true);
                 }
               });
+            });
+          }
+
+        } else {
+          nickedPlayers.remove(player.getUniqueId());
+        }
+      });
     }
 
     // Nickname notification
@@ -213,27 +206,23 @@ public abstract class NickFeatureBase extends FeatureBase implements NickFeature
             () -> {
               viewer.sendMessage(
                   TextFormatter.horizontalLine(NamedTextColor.GRAY, TextFormatter.MAX_CHAT_WIDTH));
-              viewer.sendMessage(
-                  text()
-                      .append(text("You " + (instant ? "are now" : "logged in") + " disguised as "))
-                      .append(text(name, NamedTextColor.AQUA, TextDecoration.BOLD))
-                      .color(NamedTextColor.GRAY));
-              viewer.sendMessage(
-                  text(
-                      "Only friends and staff can view your real identity",
-                      NamedTextColor.GRAY,
-                      TextDecoration.ITALIC));
+              viewer.sendMessage(text()
+                  .append(text("You " + (instant ? "are now" : "logged in") + " disguised as "))
+                  .append(text(name, NamedTextColor.AQUA, TextDecoration.BOLD))
+                  .color(NamedTextColor.GRAY));
+              viewer.sendMessage(text(
+                  "Only friends and staff can view your real identity",
+                  NamedTextColor.GRAY,
+                  TextDecoration.ITALIC));
               viewer.sendMessage(empty());
-              viewer.sendMessage(
-                  text()
-                      .append(text("Use "))
-                      .append(text("/nick", NamedTextColor.YELLOW))
-                      .append(text(" to manage your disguise status"))
-                      .color(NamedTextColor.GREEN)
-                      .hoverEvent(
-                          HoverEvent.showText(
-                              text("Click to view nick status", NamedTextColor.GRAY)))
-                      .clickEvent(ClickEvent.runCommand("/nick")));
+              viewer.sendMessage(text()
+                  .append(text("Use "))
+                  .append(text("/nick", NamedTextColor.YELLOW))
+                  .append(text(" to manage your disguise status"))
+                  .color(NamedTextColor.GREEN)
+                  .hoverEvent(
+                      HoverEvent.showText(text("Click to view nick status", NamedTextColor.GRAY)))
+                  .clickEvent(ClickEvent.runCommand("/nick")));
               viewer.sendMessage(
                   TextFormatter.horizontalLine(NamedTextColor.GRAY, TextFormatter.MAX_CHAT_WIDTH));
             },

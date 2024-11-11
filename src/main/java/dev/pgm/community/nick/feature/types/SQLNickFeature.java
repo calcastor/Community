@@ -29,63 +29,62 @@ public class SQLNickFeature extends NickFeatureBase {
 
   @Override
   public CompletableFuture<Boolean> setNick(UUID playerId, String nickName) {
-    return isNameAvailable(nickName)
-        .thenApplyAsync(
-            free -> {
-              boolean override =
-                  Bukkit.getPlayer(playerId) != null
-                      && Bukkit.getPlayer(playerId).hasPermission(CommunityPermissions.ADMIN);
-              if (!free && !override) {
-                return false;
-              }
+    return isNameAvailable(nickName).thenApplyAsync(free -> {
+      boolean override = Bukkit.getPlayer(playerId) != null
+          && Bukkit.getPlayer(playerId).hasPermission(CommunityPermissions.ADMIN);
+      if (!free && !override) {
+        return false;
+      }
 
-              getNick(playerId)
-                  .thenAcceptAsync(
-                      nick -> {
-                        if (nick == null) {
-                          Nick newNick = Nick.of(playerId, nickName);
-                          service.save(newNick);
-                        } else {
-                          nick.setName(nickName);
-                          service.update(nick);
-                        }
-                      });
-              return true;
-            });
+      getNick(playerId).thenAcceptAsync(nick -> {
+        if (nick == null) {
+          Nick newNick = Nick.of(playerId, nickName);
+          service.save(newNick);
+        } else {
+          nick.setName(nickName);
+          service.update(nick);
+        }
+      });
+      return true;
+    });
   }
 
   @Override
   public CompletableFuture<Boolean> clearNick(UUID playerId) {
-    return getNick(playerId)
-        .thenApplyAsync(
-            nick -> {
-              if (nick == null) return false;
-              nick.clear();
-              service.update(nick);
-              return true;
-            });
+    return getNick(playerId).thenApplyAsync(nick -> {
+      if (nick == null) return false;
+      nick.clear();
+      service.update(nick);
+      return true;
+    });
   }
 
   @Override
   public CompletableFuture<Boolean> isNameAvailable(String nickName) {
-    return service
-        .isNameAvailable(nickName)
-        .thenApplyAsync(
-            available -> {
-              return available && users.getStoredProfile(nickName).join() == null;
-            });
+    return service.isNameAvailable(nickName).thenApplyAsync(available -> {
+      return available && users.getStoredProfile(nickName).join() == null;
+    });
   }
 
   @Override
-  public CompletableFuture<Boolean> toggleNick(UUID playerId) {
-    return getNick(playerId)
-        .thenApplyAsync(
-            nick -> {
-              if (nick == null) return false;
+  public CompletableFuture<Boolean> toggleNickStatus(UUID playerId) {
+    return getNick(playerId).thenApplyAsync(nick -> {
+      if (nick == null) return false;
 
-              nick.setEnabled(!nick.isEnabled());
-              service.update(nick);
-              return nick.isEnabled();
-            });
+      nick.setEnabled(!nick.isEnabled());
+      service.update(nick);
+      return nick.isEnabled();
+    });
+  }
+
+  @Override
+  public CompletableFuture<Boolean> setNickStatus(UUID playerId, boolean enabled) {
+    return getNick(playerId).thenApplyAsync(nick -> {
+      if (nick == null) return false;
+
+      nick.setEnabled(enabled);
+      service.update(nick);
+      return nick.isEnabled();
+    });
   }
 }

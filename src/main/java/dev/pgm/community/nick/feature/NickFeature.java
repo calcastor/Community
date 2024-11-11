@@ -16,7 +16,9 @@ public interface NickFeature extends Feature {
 
   CompletableFuture<Boolean> clearNick(UUID playerId); // Remove the player's Nickname
 
-  CompletableFuture<Boolean> toggleNick(UUID playerId); // FALSE IF NO VALID NICK IS SET
+  CompletableFuture<Boolean> toggleNickStatus(UUID playerId); // FALSE IF NO VALID NICK IS SET
+
+  CompletableFuture<Boolean> setNickStatus(UUID playerId, boolean enabled);
 
   CompletableFuture<Boolean> isNameAvailable(String nickName); // RETURNS TRUE IF NAME IS NOT TAKEN
 
