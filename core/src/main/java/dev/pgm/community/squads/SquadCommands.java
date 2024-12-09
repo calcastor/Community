@@ -23,6 +23,7 @@ import org.bukkit.OfflinePlayer;
 import org.bukkit.command.CommandSender;
 import tc.oc.pgm.api.PGM;
 import tc.oc.pgm.api.player.MatchPlayer;
+import tc.oc.pgm.lib.org.incendo.cloud.annotation.specifier.Greedy;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Argument;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Command;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.CommandDescription;
@@ -204,7 +205,7 @@ public class SquadCommands {
   public void chat(
       CommandContext<CommandSender> context,
       MatchPlayer sender,
-      @Argument(value = "message", suggestions = "players") String message) {
+      @Argument(value = "message", suggestions = "players") @Greedy String message) {
     checkEnabled();
     if (message == null) {
       PGM.get().getChatManager().setChannel(sender, SquadChannel.INSTANCE);

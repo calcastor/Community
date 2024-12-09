@@ -6,6 +6,7 @@ import static tc.oc.pgm.util.text.TextException.exception;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -60,7 +61,10 @@ public class SquadChannel implements Channel<Squad> {
 
   @Override
   public Collection<MatchPlayer> getViewers(Squad squad) {
-    return squad.getPlayers().stream().map(uuid -> matchManager.getPlayer(uuid)).toList();
+    return squad.getPlayers().stream()
+        .filter(Objects::nonNull)
+        .map(uuid -> matchManager.getPlayer(uuid))
+        .toList();
   }
 
   @Override
