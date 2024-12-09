@@ -16,10 +16,12 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.configuration.Configuration;
 import org.bukkit.event.EventHandler;
-import tc.oc.pgm.util.channels.Channel;
-import tc.oc.pgm.util.event.ChannelMessageEvent;
+import tc.oc.pgm.api.event.ChannelMessageEvent;
+import tc.oc.pgm.channels.AdminChannel;
 
 public class NetworkChatFeature extends FeatureBase {
+
+  public static final String ADMIN_CHANNEL = "admin";
 
   private NetworkFeature network;
 
@@ -34,14 +36,14 @@ public class NetworkChatFeature extends FeatureBase {
   }
 
   @EventHandler
-  public void onMatchPlayerChat(ChannelMessageEvent event) {
-    if (event.getChannel() == Channel.ADMIN) {
+  public void onMatchPlayerChat(ChannelMessageEvent<?> event) {
+    if (event.getChannel() instanceof AdminChannel) {
       network.sendUpdate(new ChatUpdate(new NetworkChatMessage(event, getServer())));
     } // TODO: maybe more cross server message types?
   }
 
   public void recieveUpdate(NetworkChatMessage message) {
-    if (message.getChannel() == Channel.ADMIN) {
+    if (message.getChannel().equalsIgnoreCase(ADMIN_CHANNEL)) {
       Component formatted = formatMessage(message.getSender(), message.getMessage());
       BroadcastUtils.sendAdminChatMessage(
           formatted,
@@ -52,6 +54,10 @@ public class NetworkChatFeature extends FeatureBase {
   }
 
   private Component formatMessage(Component sender, Component message) {
-    return text().append(sender).append(text(": ", NamedTextColor.WHITE)).append(message).build();
+    return text()
+        .append(sender)
+        .append(text(": ", NamedTextColor.WHITE))
+        .append(message)
+        .build();
   }
 }
