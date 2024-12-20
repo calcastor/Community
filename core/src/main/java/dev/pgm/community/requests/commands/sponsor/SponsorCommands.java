@@ -427,8 +427,7 @@ public class SponsorCommands extends CommunityCommand {
   }
 
   private Component renderSponsorButton(CommandSender sender, MapInfo map) {
-    if (sender instanceof Player) {
-      Player player = (Player) sender;
+    if (sender instanceof Player player) {
       if (requests.getCached(player.getUniqueId()) != null) {
         RequestProfile profile = requests.getCached(player.getUniqueId());
         if (profile.getSponsorTokens() > 0) {

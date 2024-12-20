@@ -394,6 +394,11 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
   public void sponsor(Player player, MapInfo map) {
     Audience viewer = Audience.get(player);
 
+    if (!getRequestConfig().isSponsorEnabled()) {
+      viewer.sendWarning(text("Sponsor is not enabled!"));
+      return;
+    }
+
     // Disallow current map from being selected
     if (getCurrentMap() != null && getCurrentMap().equals(map)) {
       viewer.sendWarning(text("Please select a different map"));
