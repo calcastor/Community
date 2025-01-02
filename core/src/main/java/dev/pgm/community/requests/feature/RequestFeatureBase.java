@@ -38,6 +38,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -57,7 +58,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.jetbrains.annotations.Nullable;
 import tc.oc.pgm.api.PGM;
 import tc.oc.pgm.api.map.MapInfo;
 import tc.oc.pgm.api.map.MapOrder;
@@ -68,6 +68,8 @@ import tc.oc.pgm.api.match.event.MatchVoteFinishEvent;
 import tc.oc.pgm.events.PlayerJoinMatchEvent;
 import tc.oc.pgm.restart.RestartManager;
 import tc.oc.pgm.rotation.MapPoolManager;
+import tc.oc.pgm.rotation.pools.MapPool;
+import tc.oc.pgm.rotation.pools.VotingPool;
 import tc.oc.pgm.rotation.vote.MapPoll;
 import tc.oc.pgm.rotation.vote.VotePoolOptions;
 import tc.oc.pgm.util.Audience;
@@ -439,10 +441,14 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     // Check if map has a cooldown
     if (hasMapCooldown(map)) {
       MapCooldown cooldown = getMapCooldown(map);
-      viewer.sendWarning(text()
-          .append(text("This map can be sponsored in ", NamedTextColor.RED))
-          .append(TemporalComponent.duration(cooldown.getTimeRemaining(), NamedTextColor.YELLOW))
-          .build());
+      Component cooldownWarning = cooldown != null
+          ? text()
+              .append(text("This map can be sponsored in ", NamedTextColor.RED))
+              .append(
+                  TemporalComponent.duration(cooldown.getTimeRemaining(), NamedTextColor.YELLOW))
+              .build()
+          : text("This map is on cooldown! Please select another.", NamedTextColor.RED);
+      viewer.sendWarning(cooldownWarning);
       return;
     }
 
@@ -675,8 +681,27 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     return null;
   }
 
+  public boolean isOnLongtermCooldown(MapInfo map) {
+    if (!getRequestConfig().isPGMCooldownsUsed()) return false;
+
+    MapPool activePool = PGMUtils.getActiveMapPool();
+    if (!(activePool instanceof VotingPool)) return false;
+
+    VotingPool pool = (VotingPool) activePool;
+    VotingPool.VoteConstants constants = pool.constants;
+    var mapLibrary = PGM.get().getMapLibrary();
+
+    return map.getVariants().values().stream()
+        .map(variant -> mapLibrary.getMapById(variant.getId()))
+        .filter(Objects::nonNull)
+        .map(pool::getVoteData)
+        .allMatch(data ->
+            !data.isOnCooldown(constants) && data.getScore() > (constants.defaultScore() / 2));
+  }
+
   @Override
   public boolean hasMapCooldown(MapInfo map) {
+    if (isOnLongtermCooldown(map)) return true;
     if (isACooldownVariant(map)) return true;
 
     MapCooldown cooldown = getMapCooldown(map);
@@ -830,7 +855,6 @@ public abstract class RequestFeatureBase extends FeatureBase implements RequestF
     return sponsors.size() < getRequestConfig().getMaxQueue();
   }
 
-  @Nullable
   private MapPoolManager getPoolManager() {
     MapOrder order = PGM.get().getMapOrder();
     if (order instanceof MapPoolManager) {

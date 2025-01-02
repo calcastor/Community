@@ -9,7 +9,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.Plugin;
-import org.jetbrains.annotations.Nullable;
 import tc.oc.pgm.api.PGM;
 import tc.oc.pgm.api.map.MapInfo;
 import tc.oc.pgm.api.match.Match;
@@ -29,7 +28,7 @@ public class PGMUtils {
     return pgmPlugin != null && pgmPlugin.isEnabled() && PGM.get() != null;
   }
 
-  public static @Nullable Match getMatch() {
+  public static Match getMatch() {
     return isPGMEnabled() && PGM.get().getMatchManager().getMatches().hasNext()
         ? PGM.get().getMatchManager().getMatches().next()
         : null;
@@ -62,7 +61,6 @@ public class PGMUtils {
     return isPGMEnabled() && getMatch().isRunning();
   }
 
-  @Nullable
   public static MapInfo getCurrentMap() {
     return isPGMEnabled() && getMatch() != null ? getMatch().getMap() : null;
   }
@@ -155,7 +153,6 @@ public class PGMUtils {
     }
   }
 
-  @Nullable
   public static MapPoolManager getMapPoolManager() {
     if (isPGMEnabled()) {
       if (PGM.get().getMapOrder() instanceof MapPoolManager) {
@@ -163,6 +160,12 @@ public class PGMUtils {
       }
     }
     return null;
+  }
+
+  public static MapPool getActiveMapPool() {
+    MapPoolManager manager = getMapPoolManager();
+    if (manager == null) return null;
+    return manager.getActiveMapPool();
   }
 
   public static Optional<MapPool> getMapPool(String name) {

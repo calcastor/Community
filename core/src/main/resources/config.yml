@@ -224,15 +224,16 @@ requests:
   cooldown: "15s"  # Duration of cooldown between requests
   
   sponsors: 
-    enabled: true      # Whether /sponsor is enabled
-    cooldown: "30m"    # Duration of cooldown between /sponsor requests
-    map-cooldown: 10   # How much to multiply match duration by for map cooldown
-    limit: 10          # Maximum number of sponsor requests allowed at one time
-    daily-tokens: 1    # Amount of tokens given on a daily basis (community.token.daily perm)
-    weekly-tokens: 1   # Amount of tokens given on a weekly basis (community.token.weekly perm)
-    max-tokens: 7      # Maximum amount of tokens an account can collect
-    refund: true       # Tokens are refunded when map vote is successful
-    scale-factor: 0.45 # Scaling factor for adjusting the upper bound of map size selection
+    enabled: true           # Whether /sponsor is enabled
+    cooldown: "30m"         # Duration of cooldown between /sponsor requests
+    map-cooldown: 10        # How much to multiply match duration by for map cooldown
+    use-pgm-cooldowns: true # Whether to hook into PGMs persistent map cooldown storage
+    limit: 10               # Maximum number of sponsor requests allowed at one time
+    daily-tokens: 1         # Amount of tokens given on a daily basis (community.token.daily perm)
+    weekly-tokens: 1        # Amount of tokens given on a weekly basis (community.token.weekly perm)
+    max-tokens: 7           # Maximum amount of tokens an account can collect
+    refund: true            # Tokens are refunded when map vote is successful
+    scale-factor: 0.45      # Scaling factor for adjusting the upper bound of map size selection
     
     # Sponsor bound offset used to modify avaiable maps at the end of each match
     lower-limit-offset: 4   # Subtracted from the current minimum
