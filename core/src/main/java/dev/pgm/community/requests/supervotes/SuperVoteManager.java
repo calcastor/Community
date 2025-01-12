@@ -1,17 +1,27 @@
 package dev.pgm.community.requests.supervotes;
 
+import static net.kyori.adventure.text.Component.text;
+import static tc.oc.pgm.util.player.PlayerComponent.player;
+
 import com.google.common.collect.Sets;
 import dev.pgm.community.Community;
 import dev.pgm.community.requests.RequestConfig;
+import dev.pgm.community.utils.BroadcastUtils;
+import dev.pgm.community.utils.MessageUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.permissions.PermissionAttachment;
 import tc.oc.pgm.api.PGM;
+import tc.oc.pgm.util.Audience;
+import tc.oc.pgm.util.named.NameStyle;
 
 public class SuperVoteManager {
 
@@ -131,6 +141,28 @@ public class SuperVoteManager {
 
     public String getPermission() {
       return permission;
+    }
+  }
+
+  public void sendSuperVoterActivationFeedback(Player player) {
+    Audience viewer = Audience.get(player);
+    if (config.isSuperVoteBroadcast()) {
+      Component alert = text()
+          .append(MessageUtils.VOTE)
+          .appendSpace()
+          .append(player(player, NameStyle.FANCY))
+          .append(text(" has activated a ", NamedTextColor.YELLOW))
+          .append(text("super vote", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
+          .build();
+
+      BroadcastUtils.sendGlobalMessage(alert);
+    } else {
+      viewer.sendMessage(text()
+          .append(MessageUtils.VOTE)
+          .appendSpace()
+          .append(text("You activated a ", NamedTextColor.YELLOW))
+          .append(text("super vote", NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD))
+          .append(text("!", NamedTextColor.YELLOW)));
     }
   }
 }
