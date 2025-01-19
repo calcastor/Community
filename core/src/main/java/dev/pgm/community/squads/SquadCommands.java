@@ -8,7 +8,6 @@ import static tc.oc.pgm.util.player.PlayerComponent.player;
 import static tc.oc.pgm.util.text.TextException.exception;
 import static tc.oc.pgm.util.text.TextFormatter.horizontalLineHeading;
 
-import co.aikar.commands.annotation.CommandPermission;
 import com.google.common.collect.ImmutableList;
 import dev.pgm.community.Community;
 import dev.pgm.community.CommunityPermissions;
@@ -28,6 +27,7 @@ import tc.oc.pgm.lib.org.incendo.cloud.annotations.Argument;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Command;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.CommandDescription;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Flag;
+import tc.oc.pgm.lib.org.incendo.cloud.annotations.Permission;
 import tc.oc.pgm.lib.org.incendo.cloud.context.CommandContext;
 import tc.oc.pgm.util.Players;
 import tc.oc.pgm.util.PrettyPaginatedComponentResults;
@@ -45,7 +45,7 @@ public class SquadCommands {
 
   @Command("")
   @CommandDescription("List party members")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void listDefault(MatchPlayer sender) {
     checkEnabled();
     list(sender, false);
@@ -53,7 +53,7 @@ public class SquadCommands {
 
   @Command("<player>")
   @CommandDescription("Send a squad invitation")
-  @CommandPermission(CommunityPermissions.SQUAD_CREATE)
+  @Permission(CommunityPermissions.SQUAD_CREATE)
   public void directInvite(MatchPlayer sender, @Argument("player") MatchPlayer invited) {
     checkEnabled();
     invite(sender, invited);
@@ -61,7 +61,7 @@ public class SquadCommands {
 
   @Command("create")
   @CommandDescription("Create a squad")
-  @CommandPermission(CommunityPermissions.SQUAD_CREATE)
+  @Permission(CommunityPermissions.SQUAD_CREATE)
   public void create(MatchPlayer sender) {
     checkEnabled();
     manager.createSquad(sender);
@@ -70,7 +70,7 @@ public class SquadCommands {
 
   @Command("invite <player>")
   @CommandDescription("Send a squad invitation")
-  @CommandPermission(CommunityPermissions.SQUAD_CREATE)
+  @Permission(CommunityPermissions.SQUAD_CREATE)
   public void invite(MatchPlayer sender, @Argument("player") MatchPlayer invited) {
     checkEnabled();
     manager.createInvite(invited, sender);
@@ -92,7 +92,7 @@ public class SquadCommands {
 
   @Command("accept <player>")
   @CommandDescription("Accept a squad invitation")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void accept(MatchPlayer sender, @Argument("player") MatchPlayer leader) {
     checkEnabled();
     manager.acceptInvite(sender, leader);
@@ -105,7 +105,7 @@ public class SquadCommands {
 
   @Command("deny <player>")
   @CommandDescription("Deny a squad invitation")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void deny(MatchPlayer sender, @Argument("player") MatchPlayer leader) {
     checkEnabled();
     manager.expireInvite(sender, leader);
@@ -118,7 +118,7 @@ public class SquadCommands {
 
   @Command("leave")
   @CommandDescription("Leave your current party")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void leave(MatchPlayer sender) {
     checkEnabled();
     manager.leaveSquad(sender);
@@ -127,7 +127,7 @@ public class SquadCommands {
 
   @Command("list")
   @CommandDescription("List party members")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void list(MatchPlayer sender, @Flag(value = "all", aliases = "a") boolean all) {
     checkEnabled();
 
@@ -201,7 +201,7 @@ public class SquadCommands {
 
   @Command("chat [message]")
   @CommandDescription("Sends a message to your party")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void chat(
       CommandContext<CommandSender> context,
       MatchPlayer sender,
@@ -216,7 +216,7 @@ public class SquadCommands {
 
   @Command("kick <player>")
   @CommandDescription("Kick a player from your party")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void kick(MatchPlayer sender, @Argument("player") OfflinePlayer player) {
     checkEnabled();
     MatchPlayer target = PGM.get().getMatchManager().getPlayer(player.getUniqueId());
@@ -231,7 +231,7 @@ public class SquadCommands {
 
   @Command("disband")
   @CommandDescription("Disband your current party")
-  @CommandPermission(CommunityPermissions.SQUAD)
+  @Permission(CommunityPermissions.SQUAD)
   public void disband(MatchPlayer sender) {
     checkEnabled();
     manager.disband(sender);
