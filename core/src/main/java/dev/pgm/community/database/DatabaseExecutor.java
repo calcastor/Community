@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
@@ -32,15 +33,28 @@ public final class DatabaseExecutor {
   private DatabaseExecutor() {}
 
   public static CompletableFuture<Integer> executeUpdateAsync(String sql, Object... params) {
-    return withConnection(() -> 0, conn -> {
-      try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-        bindParams(stmt, params);
-        return stmt.executeUpdate();
-      } catch (SQLException e) {
-        logSqlError("update", sql, e);
-        return 0;
-      }
+    return executeUpdateOrFailAsync(sql, params).exceptionally(error -> {
+      if (error.getCause() instanceof SQLException) return 0;
+      throw error instanceof CompletionException completion
+          ? completion
+          : new CompletionException(error);
     });
+  }
+
+  public static CompletableFuture<Integer> executeUpdateOrFailAsync(String sql, Object... params) {
+    return withConnection(
+        () -> {
+          throw new CompletionException(new SQLException("No database connection"));
+        },
+        conn -> {
+          try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            bindParams(stmt, params);
+            return stmt.executeUpdate();
+          } catch (SQLException e) {
+            logSqlError("update", sql, e);
+            throw new CompletionException(e);
+          }
+        });
   }
 
   public static <T> CompletableFuture<T> queryFirstAsync(
@@ -236,10 +250,14 @@ public final class DatabaseExecutor {
     }
   }
 
+  private static String abbreviate(String sql) {
+    return sql.length() <= 200 ? sql : sql.substring(0, 200) + "...";
+  }
+
   private static void logSqlError(String action, String sql, SQLException e) {
     Community.get()
         .getLogger()
-        .warning("Database " + action + " failed (" + sql + "): " + e.getMessage());
+        .warning("Database " + action + " failed (" + abbreviate(sql) + "): " + e.getMessage());
   }
 
   @FunctionalInterface
