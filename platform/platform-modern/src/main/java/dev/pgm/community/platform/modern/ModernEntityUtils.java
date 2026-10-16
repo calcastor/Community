@@ -13,6 +13,14 @@ import org.bukkit.entity.LivingEntity;
 @Supports(value = PAPER, minVersion = "1.21.11")
 public class ModernEntityUtils implements EntityUtils {
   @Override
+  public void stopFollowing(LivingEntity mob) {
+    Entity handle = ((CraftEntity) mob).getHandle();
+    if (handle instanceof PathfinderMob pathfinderMob) {
+      pathfinderMob.getNavigation().stop();
+    }
+  }
+
+  @Override
   public void follow(LivingEntity mob, Location location, float speed) {
     Entity handle = ((CraftEntity) mob).getHandle();
     if (handle instanceof PathfinderMob pathfinderMob) {

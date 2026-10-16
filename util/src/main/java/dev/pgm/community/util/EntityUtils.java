@@ -7,4 +7,6 @@ public interface EntityUtils {
   EntityUtils ENTITY_UTILS = Platform.get(EntityUtils.class);
 
   void follow(LivingEntity mob, Location location, float speed);
+
+  void stopFollowing(LivingEntity mob);
 }

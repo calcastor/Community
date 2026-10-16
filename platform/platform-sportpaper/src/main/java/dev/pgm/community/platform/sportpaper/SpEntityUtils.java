@@ -12,6 +12,13 @@ import org.bukkit.entity.LivingEntity;
 @Supports(SPORTPAPER)
 public class SpEntityUtils implements EntityUtils {
   @Override
+  public void stopFollowing(LivingEntity mob) {
+    if (((CraftEntity) mob).getHandle() instanceof EntityInsentient nmsMob) {
+      nmsMob.getNavigation().n();
+    }
+  }
+
+  @Override
   public void follow(LivingEntity mob, Location location, float speed) {
     EntityInsentient nmsMob = ((EntityInsentient) ((CraftEntity) mob).getHandle());
     nmsMob.getNavigation().a(location.getX(), location.getY(), location.getZ(), speed);
