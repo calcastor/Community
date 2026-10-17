@@ -10,19 +10,25 @@ import dev.pgm.community.CommunityPermissions;
 import dev.pgm.community.commands.player.TargetPlayer;
 import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
+import dev.pgm.community.requests.audit.Currency;
+import dev.pgm.community.requests.audit.CurrencyChange;
+import dev.pgm.community.requests.audit.CurrencyHistoryComponents;
 import dev.pgm.community.requests.feature.RequestFeature;
 import dev.pgm.community.users.feature.UsersFeature;
 import dev.pgm.community.utils.CommandAudience;
 import dev.pgm.community.utils.MessageUtils;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.entity.Player;
+import tc.oc.pgm.lib.org.incendo.cloud.annotation.specifier.Range;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Argument;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Command;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.CommandDescription;
+import tc.oc.pgm.lib.org.incendo.cloud.annotations.Default;
 import tc.oc.pgm.lib.org.incendo.cloud.annotations.Permission;
 import tc.oc.pgm.util.Audience;
 import tc.oc.pgm.util.named.NameStyle;
@@ -68,6 +74,54 @@ public class TokenCommands extends CommunityCommand {
     }
   }
 
+  @Command("history <target> [page]")
+  @CommandDescription("View recorded sponsor token grants, spending and refunds")
+  @Permission(CommunityPermissions.TOKEN_HISTORY)
+  public void history(
+      CommandAudience audience,
+      @Argument("target") TargetPlayer target,
+      @Argument("page") @Default("1") @Range(min = "1") int page) {
+    getTarget(target.getIdentifier(), users)
+        .thenAccept(id -> {
+          if (id.isEmpty()) {
+            audience.sendWarning(formatNotFoundComponent(target.getIdentifier()));
+            return;
+          }
+
+          requests
+              .getCurrencyHistory(id.get(), Currency.SPONSOR_TOKEN, page)
+              .thenAcceptAsync(history -> {
+                Component name = users
+                    .renderUsername(id, NameStyle.FANCY)
+                    .exceptionally(error -> text(target.getIdentifier()))
+                    .join();
+                CurrencyHistoryComponents.show(
+                    audience,
+                    history,
+                    id.get(),
+                    name,
+                    Currency.SPONSOR_TOKEN,
+                    page,
+                    ((RequestConfig) requests.getConfig()).isSponsorAuditEnabled());
+              })
+              .exceptionally(failure -> {
+                Community.get()
+                    .getLogger()
+                    .log(
+                        Level.WARNING,
+                        "Failed to load sponsor token history for " + target.getIdentifier(),
+                        failure);
+                audience.sendWarning(
+                    text("Failed to load sponsor token history", NamedTextColor.RED));
+                return null;
+              });
+        })
+        .exceptionally(failure -> {
+          audience.sendWarning(text("Could not resolve that player. Please try again!"));
+          return null;
+        });
+  }
+
   @Command("give <target> <amount>")
   @CommandDescription("Give the targeted player sponsor tokens")
   @Permission(CommunityPermissions.ADMIN)
@@ -75,22 +129,35 @@ public class TokenCommands extends CommunityCommand {
       CommandAudience audience,
       @Argument("target") TargetPlayer target,
       @Argument("amount") int amount) {
+    CurrencyChange change = CurrencyChange.admin(
+        Currency.SPONSOR_TOKEN,
+        amount,
+        audience.getId().orElse(null),
+        audience.getSender().getName());
     getTarget(target.getIdentifier(), users).thenAcceptAsync(targetId -> {
       if (targetId.isPresent()) {
         RequestProfile profile = requests.getRequestProfile(targetId.get()).join();
         if (profile != null) {
-          int total = profile.giveSponsorToken(amount);
-          requests.update(profile);
-          audience.sendMessage(text()
-              .append(MessageUtils.TOKEN)
-              .append(space())
-              .append(
-                  users.renderUsername(profile.getPlayerId(), NameStyle.FANCY).join())
-              .append(text(" now has "))
-              .append(text(total, NamedTextColor.YELLOW, TextDecoration.BOLD))
-              .append(text(" sponsor token" + (total != 1 ? "s" : "")))
-              .color(NamedTextColor.GRAY)
-              .build());
+          requests
+              .changeCurrency(profile.getPlayerId(), change)
+              .whenCompleteAsync((total, failure) -> {
+                if (failure != null) {
+                  audience.sendWarning(text("Could not save sponsor tokens. Please try again!"));
+                  return;
+                }
+                audience.sendMessage(text()
+                    .append(MessageUtils.TOKEN)
+                    .append(space())
+                    .append(users
+                        .renderUsername(profile.getPlayerId(), NameStyle.FANCY)
+                        .exceptionally(error -> text(target.getIdentifier()))
+                        .join())
+                    .append(text(" now has "))
+                    .append(text(total, NamedTextColor.YELLOW, TextDecoration.BOLD))
+                    .append(text(" sponsor token" + (total != 1 ? "s" : "")))
+                    .color(NamedTextColor.GRAY)
+                    .build());
+              });
           return;
         }
       }

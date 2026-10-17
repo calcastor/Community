@@ -8,9 +8,13 @@ public interface RequestQuery {
 
   String INSERT_REQUESTS_QUERY = "INSERT INTO " + TABLE_NAME + " VALUES (?,?,?,?,?,?,?,?,?)";
 
-  String UPDATE_REQUEST_QUERY = "UPDATE "
-      + TABLE_NAME
-      + " SET last_request_time = ?, last_request_map = ?, last_sponsor_time = ?, last_sponsor_map = ?, tokens = ?, last_token_refresh = ?, super_votes = ?, last_super_vote = ? WHERE id = ? ";
+  String REQUEST_UPDATE_FIELDS = "last_request_time = ?, last_request_map = ?";
+  String SPONSOR_UPDATE_FIELDS =
+      "last_sponsor_time = ?, last_sponsor_map = ?, tokens = ?, last_token_refresh = ?";
+  String SUPER_VOTE_UPDATE_FIELDS = "super_votes = ?, last_super_vote = ?";
+
+  String UPDATE_REQUEST_QUERY = "UPDATE " + TABLE_NAME + " SET " + REQUEST_UPDATE_FIELDS + ", "
+      + SPONSOR_UPDATE_FIELDS + ", " + SUPER_VOTE_UPDATE_FIELDS + " WHERE id = ?";
 
   String SELECT_REQUEST_QUERY = "SELECT * from " + TABLE_NAME + " WHERE id = ? LIMIT 1";
 }

@@ -5,6 +5,9 @@ import static net.kyori.adventure.text.Component.text;
 import dev.pgm.community.feature.Feature;
 import dev.pgm.community.requests.RequestProfile;
 import dev.pgm.community.requests.SponsorRequest;
+import dev.pgm.community.requests.audit.Currency;
+import dev.pgm.community.requests.audit.CurrencyChange;
+import dev.pgm.community.requests.audit.CurrencyHistoryPage;
 import dev.pgm.community.utils.PGMUtils.MapSizeBounds;
 import java.time.Duration;
 import java.util.List;
@@ -183,4 +186,9 @@ public interface RequestFeature extends Feature {
   int getStandardExtraVoteLevel(Player player);
 
   int getMultipliedExtraVoteLevel(Player player);
+
+  CompletableFuture<Integer> changeCurrency(UUID playerId, CurrencyChange change);
+
+  CompletableFuture<CurrencyHistoryPage> getCurrencyHistory(
+      UUID playerId, Currency currency, int page);
 }

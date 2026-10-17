@@ -27,4 +27,25 @@ public class MySqlDialect implements SqlDialect {
     return "INSERT INTO user_settings (id, setting, setting_value) VALUES (?, ?, ?)"
         + " ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)";
   }
+
+  @Override
+  public String transactionalTableOptions() {
+    return " ENGINE=InnoDB";
+  }
+
+  @Override
+  public String selectForUpdateClause() {
+    return " FOR UPDATE";
+  }
+
+  @Override
+  public String findNonTransactionalTableQuery() {
+    return "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() "
+        + "AND TABLE_NAME = ? AND ENGINE <> 'InnoDB'";
+  }
+
+  @Override
+  public boolean reportsMatchedRows() {
+    return false;
+  }
 }

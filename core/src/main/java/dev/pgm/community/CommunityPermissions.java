@@ -93,6 +93,7 @@ public interface CommunityPermissions {
   String TOKEN = ROOT + ".token"; // Access to view /token
   String TOKEN_DAILY = TOKEN + ".daily"; // Receives token refresh daily
   String TOKEN_WEEKLY = TOKEN + ".weekly"; // Receives token refresh weekly
+  String TOKEN_HISTORY = TOKEN + ".history"; // Access to sponsor token audit history
   String TOKEN_BALANCE = TOKEN + ".view-others"; // Access to view other token balances
 
   String SPONSOR_COOLDOWN_CUSTOM = "sponsor.cooldown.";
@@ -101,6 +102,7 @@ public interface CommunityPermissions {
 
   // Super Votes
   String SUPER_VOTE = REQUEST + ".super-vote";
+  String SUPER_VOTE_HISTORY = SUPER_VOTE + ".history"; // Access to super vote audit history
   String SUPER_VOTE_BALANCE = SUPER_VOTE + ".balance";
 
   // Translations

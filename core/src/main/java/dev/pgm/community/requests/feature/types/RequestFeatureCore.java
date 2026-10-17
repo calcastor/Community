@@ -20,6 +20,13 @@ import dev.pgm.community.party.MapParty;
 import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
 import dev.pgm.community.requests.SponsorRequest;
+import dev.pgm.community.requests.audit.Currency;
+import dev.pgm.community.requests.audit.CurrencyAction;
+import dev.pgm.community.requests.audit.CurrencyChange;
+import dev.pgm.community.requests.audit.CurrencyHistoryPage;
+import dev.pgm.community.requests.audit.CurrencyResult;
+import dev.pgm.community.requests.audit.InsufficientCurrencyException;
+import dev.pgm.community.requests.audit.PendingRefund;
 import dev.pgm.community.requests.feature.RequestFeature;
 import dev.pgm.community.requests.feature.SponsorVotingBookCreator;
 import dev.pgm.community.requests.menu.SponsorMenu;
@@ -29,16 +36,20 @@ import dev.pgm.community.requests.store.RequestStore;
 import dev.pgm.community.requests.supervotes.SuperVoteManager;
 import dev.pgm.community.users.feature.UsersFeature;
 import dev.pgm.community.utils.BroadcastUtils;
+import dev.pgm.community.utils.MessageUtils;
 import dev.pgm.community.utils.PGMUtils;
 import dev.pgm.community.utils.PGMUtils.MapSizeBounds;
 import dev.pgm.community.utils.Sounds;
 import dev.pgm.community.utils.VisibilityUtils;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import net.kyori.adventure.text.Component;
@@ -48,12 +59,14 @@ import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.configuration.Configuration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.scheduler.BukkitTask;
 import tc.oc.pgm.api.PGM;
 import tc.oc.pgm.api.map.MapInfo;
 import tc.oc.pgm.api.map.MapOrder;
@@ -83,6 +96,18 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
   private final SponsorVotingBookCreator bookCreator;
   private final SponsorManager sponsor;
   private final SuperVoteManager superVotes;
+  private final UsersFeature users;
+
+  private final Map<UUID, CompletableFuture<?>> currencyChanges = new HashMap<>();
+  private final Map<UUID, PendingRefund> pendingRefunds = new ConcurrentHashMap<>();
+  private final Map<UUID, Component> refundMessages = new ConcurrentHashMap<>();
+  private final Set<UUID> processingRefunds = ConcurrentHashMap.newKeySet();
+  private final Map<UUID, CurrencyChange> sponsorCharges = new HashMap<>();
+  private final Set<UUID> processingSuperVotes = ConcurrentHashMap.newKeySet();
+  private volatile UUID voteId = UUID.randomUUID();
+  private volatile boolean processingSponsor;
+  private BukkitTask refundTask;
+  private volatile boolean storedRefunds = true;
 
   private boolean accepting;
 
@@ -98,6 +123,7 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
     this.sponsor = new SponsorManager(this, getRequestConfig());
     this.superVotes = new SuperVoteManager(getRequestConfig(), logger);
     this.store = store;
+    this.users = users;
 
     if (getConfig().isEnabled() && PGMUtils.isPGMEnabled()) {
       enable();
@@ -105,18 +131,297 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
     }
   }
 
+  @Override
+  public void enable() {
+    super.enable();
+    if (isAnyAuditEnabled()) {
+      store.initializeCurrencyAudit().exceptionally(failure -> {
+        logger.log(Level.WARNING, "Currency audit initialization failed", failure);
+        return null;
+      });
+    }
+    if (refundTask == null) {
+      refundTask =
+          Bukkit.getScheduler().runTaskTimer(Community.get(), this::retryRefunds, 600L, 600L);
+    }
+  }
+
+  @Override
+  public void disable() {
+    if (refundTask != null) {
+      refundTask.cancel();
+      refundTask = null;
+    }
+    super.disable();
+  }
+
+  @Override
+  public CompletableFuture<Integer> changeCurrency(UUID playerId, CurrencyChange change) {
+    return changeCurrency(playerId, change, false);
+  }
+
+  private synchronized CompletableFuture<Integer> changeCurrency(
+      UUID playerId, CurrencyChange change, boolean forceAudit) {
+    boolean auditChange = forceAudit || isAuditEnabled(change.currency());
+    CompletableFuture<?> previous =
+        currencyChanges.getOrDefault(playerId, CompletableFuture.completedFuture(null));
+    CompletableFuture<Integer> next = previous
+        .handle((value, failure) -> null)
+        .thenCompose(ignored -> getRequestProfile(playerId).thenCompose(profile -> {
+          if (profile == null)
+            return CompletableFuture.failedFuture(new IllegalStateException("Player not found"));
+          if (auditChange || isAuditEnabled(change.currency())) {
+            return store
+                .changeCurrency(
+                    profile,
+                    change,
+                    getRequestConfig().getMaxTokens(),
+                    Community.get().getServerConfig().getServerId())
+                .thenApply(result -> {
+                  logCurrencyChange(playerId, change, result);
+                  return result.balanceAfter();
+                });
+          }
+          int balance;
+          if (change.currency() == Currency.SUPER_VOTE) {
+            if (change.action() == CurrencyAction.SPEND) profile.superVote();
+            else profile.giveSuperVotes(change.amount());
+            balance = profile.getSuperVotes();
+          } else {
+            if (change.action().isTokenRefresh()) profile.refreshTokens(change.amount());
+            else if (change.action() == CurrencyAction.SPEND) {
+              profile.applyCurrency(
+                  Currency.SPONSOR_TOKEN,
+                  Math.max(0, profile.getSponsorTokens() - 1),
+                  profile.getLastTokenRefreshTime(),
+                  Instant.now(),
+                  change.context());
+            } else profile.giveSponsorToken(change.amount());
+            balance = profile.getSponsorTokens();
+          }
+          update(profile);
+          return CompletableFuture.completedFuture(balance);
+        }));
+    currencyChanges.put(playerId, next);
+    next.whenComplete((value, failure) -> {
+      synchronized (RequestFeatureCore.this) {
+        currencyChanges.remove(playerId, next);
+      }
+      // A low balance is an expected rejection which callers already report to the player
+      if (failure != null && InsufficientCurrencyException.isCause(failure)) {
+        logAudit(
+            change.currency(),
+            "&f%s &ccould not spend %s &8- &7not enough balance",
+            getAuditName(playerId, change),
+            formatAuditAmount(change.currency(), change.amount()));
+      } else if (failure != null) {
+        logger.log(
+            Level.WARNING,
+            "Currency change failed for " + playerId + " (" + change.eventId() + ")",
+            failure);
+      }
+    });
+    return next;
+  }
+
+  /** Logs a committed audited change to console, so it can be followed without the database. */
+  private void logCurrencyChange(UUID playerId, CurrencyChange change, CurrencyResult result) {
+    String name = getAuditName(playerId, change);
+    if (result.duplicate()) {
+      logAudit(
+          change.currency(),
+          "&8Skipped %s for &7%s &8- already recorded",
+          change.action().name(),
+          name);
+      return;
+    }
+
+    int actual = result.balanceAfter() - result.balanceBefore();
+    int shown = actual != 0 ? actual : change.amount();
+    // Green when the player gains currency, red when they lose it
+    String amount = (shown > 0 ? "&a" : "&c") + formatAuditAmount(change.currency(), shown) + "&7";
+    String actor = "&f" + change.actorName() + "&7";
+    String description =
+        switch (change.action()) {
+          case ADMIN_GRANT -> "was given " + amount + " by " + actor;
+          case ADMIN_REMOVE -> "had " + amount + " removed by " + actor;
+          case DAILY_REFRESH -> "received " + amount + " from the daily refresh";
+          case WEEKLY_REFRESH -> "received " + amount + " from the weekly refresh";
+          case SPEND ->
+            change.currency() == Currency.SPONSOR_TOKEN
+                ? "spent " + amount + " sponsoring &6" + getAuditMapName(change.context())
+                : "spent " + amount + " activating a super vote";
+          case REFUND ->
+            "was refunded " + amount
+                + (change.context() != null ? " &8(" + change.context() + ")" : "");
+        };
+
+    // Balances never go below zero, so note when less was taken than requested
+    String requested = actual != change.amount() ? " &8(requested " + change.amount() + ")" : "";
+
+    logAudit(
+        change.currency(),
+        "&f%s &7%s%s &8- &7balance &e%d &8-> &e%d",
+        name,
+        description,
+        requested,
+        result.balanceBefore(),
+        result.balanceAfter());
+  }
+
+  /** Writes to console with an audit prefix in place of the usual Community one. */
+  private static void logAudit(Currency currency, String format, Object... args) {
+    // Prefix colours match each currency's in-game colour
+    String prefix = currency == Currency.SPONSOR_TOKEN ? "&e[Token Audit]" : "&5[Super Vote Audit]";
+    Bukkit.getConsoleSender()
+        .sendRawMessage(ChatColor.translateAlternateColorCodes(
+            '&', prefix + " " + String.format(format, args)));
+  }
+
+  private String getAuditName(UUID playerId, CurrencyChange change) {
+    Player player = Bukkit.getPlayer(playerId);
+    if (player != null) return player.getName();
+    if (playerId.equals(change.actorId())) return change.actorName();
+    String stored = users.getUsername(playerId);
+    return stored != null ? stored : playerId.toString();
+  }
+
+  private static String formatAuditAmount(Currency currency, int amount) {
+    int count = Math.abs(amount);
+    String label = currency == Currency.SPONSOR_TOKEN ? "sponsor token" : "super vote";
+    return count + " " + label + (count != 1 ? "s" : "");
+  }
+
+  private static String getAuditMapName(String mapId) {
+    if (mapId == null) return "a map";
+    MapInfo map = PGM.get().getMapLibrary().getMap(mapId);
+    return map != null ? map.getName() : mapId;
+  }
+
+  @Override
+  public CompletableFuture<CurrencyHistoryPage> getCurrencyHistory(
+      UUID playerId, Currency currency, int page) {
+    if (page < 1)
+      return CompletableFuture.failedFuture(new IllegalArgumentException("Page must be positive"));
+    return store.getCurrencyHistory(playerId, currency, page);
+  }
+
+  private void queueRefund(UUID playerId, Currency currency, CurrencyChange spend, String context) {
+    queueRefund(playerId, currency, spend, context, null);
+  }
+
+  private void queueRefund(
+      UUID playerId, Currency currency, CurrencyChange spend, String context, Component message) {
+    CurrencyChange refund = new CurrencyChange(
+        spend == null
+            ? UUID.randomUUID()
+            : UUID.nameUUIDFromBytes(
+                ("refund:" + spend.eventId()).getBytes(StandardCharsets.UTF_8)),
+        currency,
+        1,
+        CurrencyAction.REFUND,
+        null,
+        "SYSTEM",
+        context,
+        spend == null ? null : spend.eventId());
+    PendingRefund pending = new PendingRefund(playerId, refund);
+    if (message != null) refundMessages.put(refund.eventId(), message);
+    pendingRefunds.put(refund.eventId(), pending);
+    attemptRefund(pending);
+  }
+
+  private void retryRefunds() {
+    if (!isAnyAuditEnabled() && pendingRefunds.isEmpty() && !storedRefunds) return;
+    store
+        .getPendingRefunds()
+        .thenAccept(pending -> {
+          storedRefunds = !pending.isEmpty();
+          pending.forEach(refund -> pendingRefunds.putIfAbsent(refund.change().eventId(), refund));
+          pendingRefunds.values().forEach(this::attemptRefund);
+        })
+        .exceptionally(failure -> {
+          // Message only, this retries every 30 seconds and a trace each time would flood the log
+          logger.warning("Could not load pending currency refunds: " + failure.getMessage());
+          pendingRefunds.values().forEach(this::attemptRefund);
+          return null;
+        });
+  }
+
+  private void attemptRefund(PendingRefund refund) {
+    UUID eventId = refund.change().eventId();
+    if (!processingRefunds.add(eventId)) return;
+    store
+        .queueRefund(refund)
+        // A queued refund remains audited even if the toggle changes while it is being processed.
+        .thenCompose(ignored -> changeCurrency(refund.playerId(), refund.change(), true))
+        .whenComplete((balance, failure) -> {
+          processingRefunds.remove(eventId);
+          if (failure == null) {
+            pendingRefunds.remove(eventId);
+            Component message = refundMessages.remove(eventId);
+            Bukkit.getScheduler().runTask(Community.get(), () -> {
+              Player player = Bukkit.getPlayer(refund.playerId());
+              if (player != null) {
+                Audience viewer = Audience.get(player);
+                if (refund.change().currency() == Currency.SPONSOR_TOKEN) {
+                  viewer.sendMessage(formatTokenTransaction(
+                      1,
+                      message != null
+                          ? message
+                          : text(
+                              "Your sponsor token has been refunded!",
+                              NamedTextColor.GREEN,
+                              TextDecoration.BOLD)));
+                  viewer.playSound(Sounds.GET_TOKENS);
+                } else {
+                  viewer.sendMessage(text()
+                      .append(MessageUtils.VOTE)
+                      .appendSpace()
+                      .append(
+                          message != null
+                              ? message
+                              : text(
+                                  "Your super vote has been refunded!",
+                                  NamedTextColor.GREEN,
+                                  TextDecoration.BOLD))
+                      .build());
+                }
+              }
+            });
+          } else {
+            // Message only, failed refunds retry every 30 seconds
+            logger.warning(
+                "Currency refund pending retry " + eventId + ": " + failure.getMessage());
+          }
+        });
+  }
+
   public RequestConfig getRequestConfig() {
     return (RequestConfig) getConfig();
   }
 
+  private boolean isAuditEnabled(Currency currency) {
+    return currency == Currency.SPONSOR_TOKEN
+        ? getRequestConfig().isSponsorAuditEnabled()
+        : getRequestConfig().isSuperVoteAuditEnabled();
+  }
+
+  private boolean isAnyAuditEnabled() {
+    return getRequestConfig().isSponsorAuditEnabled()
+        || getRequestConfig().isSuperVoteAuditEnabled();
+  }
+
   @Override
   public CompletableFuture<RequestProfile> onLogin(PlayerJoinEvent event) {
-    return store.login(event.getPlayer().getUniqueId());
+    return store.login(event.getPlayer().getUniqueId(), isAnyAuditEnabled());
   }
 
   @Override
   public void update(RequestProfile profile) {
-    store.update(profile);
+    store.update(
+        profile,
+        !getRequestConfig().isSponsorAuditEnabled(),
+        !getRequestConfig().isSuperVoteAuditEnabled());
   }
 
   @Override
@@ -318,25 +623,85 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
       return;
     }
 
-    getRequestProfile(player.getUniqueId()).thenAcceptAsync(profile -> {
-      if (profile.getSuperVotes() < 1) {
-        viewer.sendWarning(text("You don't have enough super votes!"));
+    if (!getRequestConfig().isSuperVoteAuditEnabled()) {
+      getRequestProfile(player.getUniqueId()).thenAcceptAsync(profile -> {
+        if (profile.getSuperVotes() < 1) {
+          viewer.sendWarning(text("You don't have enough super votes!"));
+          return;
+        }
+        profile.superVote();
+        update(profile);
+        superVotes.onActivate(player);
+        superVotes.sendSuperVoterActivationFeedback(player);
+      });
+    } else {
+      if (!processingSuperVotes.add(player.getUniqueId())) {
+        viewer.sendWarning(text("Your super vote is already being processed!"));
         return;
       }
+      UUID currentVote = voteId;
+      CurrencyChange spend = new CurrencyChange(
+          UUID.randomUUID(),
+          Currency.SUPER_VOTE,
+          -1,
+          CurrencyAction.SPEND,
+          player.getUniqueId(),
+          player.getName(),
+          "Vote " + currentVote + " on " + getCurrentMap().getId(),
+          null);
+      getRequestProfile(player.getUniqueId())
+          .thenCompose(profile -> {
+            // Check the cached balance first so an empty balance never reaches the database
+            if (profile != null && profile.getSuperVotes() < 1) {
+              return CompletableFuture.<Integer>failedFuture(new InsufficientCurrencyException());
+            }
+            return changeCurrency(player.getUniqueId(), spend);
+          })
+          .whenComplete((balance, failure) -> Bukkit.getScheduler().runTask(Community.get(), () -> {
+            processingSuperVotes.remove(player.getUniqueId());
+            applyAuditedSuperVote(player, viewer, spend, currentVote, failure);
 
-      // Save profile
-      profile.superVote();
-      update(profile);
-
-      // Activate permissions
-      superVotes.onActivate(player);
-
-      // Broadcast or send message
-      superVotes.sendSuperVoterActivationFeedback(player);
-    });
+            // Re-Open the vote book once the super vote has been saved
+            if (player.isOnline() && superVotes.isVotingActive()) {
+              Bukkit.dispatchCommand(player, "votebook");
+            }
+          }));
+      return;
+    }
 
     // Re-Open the vote book
     Bukkit.dispatchCommand(player, "votebook");
+  }
+
+  private void applyAuditedSuperVote(
+      Player player, Audience viewer, CurrencyChange spend, UUID currentVote, Throwable failure) {
+    if (failure != null) {
+      // The database may also reject a spend when the cached balance was stale
+      if (InsufficientCurrencyException.isCause(failure)) {
+        viewer.sendWarning(text("You don't have enough super votes!"));
+      } else {
+        viewer.sendWarning(text("Could not save your super vote. Please try again!"));
+      }
+      return;
+    }
+    if (!currentVote.equals(voteId)
+        || !superVotes.isVotingActive()
+        || !player.isOnline()
+        || !hasSelectedMapForRunningVote(player)) {
+      // The refund message tells the player what happened once the vote is back in their balance
+      queueRefund(
+          player.getUniqueId(),
+          Currency.SUPER_VOTE,
+          spend,
+          "Vote ended before activation",
+          text(
+              "The vote ended before your super vote was activated, it has been refunded!",
+              NamedTextColor.GREEN,
+              TextDecoration.BOLD));
+      return;
+    }
+    superVotes.onActivate(player);
+    superVotes.sendSuperVoterActivationFeedback(player);
   }
 
   @EventHandler
@@ -346,6 +711,15 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
     superVotes.onRelogin(player);
 
     onLogin(event).thenAcceptAsync(profile -> {
+      if (profile == null) {
+        logger.warning("Could not load request profile for " + player.getName());
+        // Only sponsors rely on the profile at login, for their token refresh
+        if (player.hasPermission(CommunityPermissions.REQUEST_SPONSOR)) {
+          Audience.get(player)
+              .sendWarning(text("Could not load your sponsor tokens. Please rejoin to try again!"));
+        }
+        return;
+      }
       if (player.hasPermission(CommunityPermissions.REQUEST_SPONSOR)) {
         sponsor.performTokenRefresh(player, profile);
       }
@@ -355,9 +729,11 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
   @EventHandler(priority = EventPriority.MONITOR)
   public void onMatchEnd(MatchFinishEvent event) {
     voteConfirm.invalidateAll();
+    voteId = UUID.randomUUID();
     superVotes.onVoteStart();
 
     if (sponsor.getCurrentSponsor() != null) { // Reset current sponsor after match ends
+      sponsorCharges.remove(sponsor.getCurrentSponsor().playerId());
       sponsor.setCurrentSponsor(null);
     }
 
@@ -389,22 +765,97 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
               SponsorRequest nextRequest = sponsor.getNextSponsor();
 
               if (nextRequest == null) return;
-              // Notify PGM of the sponsored map and minimum cooldown
-              options.addMap(nextRequest.map(), nextRequest.playerId());
-              sponsor.startNewMapCooldown(nextRequest.map(), Duration.ZERO);
+              if (processingSponsor) {
+                sponsor.getSponsorQueue().addFirst(nextRequest);
+                return;
+              }
+              if (!getRequestConfig().isSponsorAuditEnabled()) {
+                // Notify PGM of the sponsored map and minimum cooldown
+                options.addMap(nextRequest.map(), nextRequest.playerId());
+                sponsor.startNewMapCooldown(nextRequest.map(), Duration.ZERO);
 
-              // Track the current sponsor
-              sponsor.setCurrentSponsor(nextRequest);
+                // Track the current sponsor
+                sponsor.setCurrentSponsor(nextRequest);
 
-              // Update profile
-              getRequestProfile(nextRequest.playerId()).thenAcceptAsync(profile -> {
-                // Update RequestProfile with sponsor map info
-                profile.sponsor(nextRequest.map());
-                update(profile);
-              });
+                // Update profile
+                getRequestProfile(nextRequest.playerId()).thenAcceptAsync(profile -> {
+                  // Update RequestProfile with sponsor map info
+                  profile.sponsor(nextRequest.map());
+                  update(profile);
+                });
 
-              // Alert online player if their sponsor request has been processed
-              sponsor.alertRequesterToConfirmation(nextRequest.playerId());
+                // Alert online player if their sponsor request has been processed
+                sponsor.alertRequesterToConfirmation(nextRequest.playerId());
+                return;
+              }
+              processingSponsor = true;
+              UUID currentVote = voteId;
+              Player chargingPlayer = Bukkit.getPlayer(nextRequest.playerId());
+              CurrencyChange charge = new CurrencyChange(
+                  UUID.randomUUID(),
+                  Currency.SPONSOR_TOKEN,
+                  -1,
+                  CurrencyAction.SPEND,
+                  nextRequest.playerId(),
+                  chargingPlayer == null
+                      ? nextRequest.playerId().toString()
+                      : chargingPlayer.getName(),
+                  nextRequest.map().getId(),
+                  null);
+              changeCurrency(nextRequest.playerId(), charge)
+                  .whenComplete((balance, failure) -> Bukkit.getScheduler()
+                      .runTask(Community.get(), () -> {
+                        processingSponsor = false;
+                        if (failure != null) {
+                          Player player = Bukkit.getPlayer(nextRequest.playerId());
+                          // Retrying can't fix a low balance, so drop the request instead of
+                          // letting it claim the sponsor slot every time it reaches the front
+                          if (InsufficientCurrencyException.isCause(failure)) {
+                            Community.log(
+                                "Removed sponsor request (%s) for %s - not enough tokens",
+                                nextRequest.map().getName(), nextRequest.playerId());
+                            if (player != null) {
+                              Audience.get(player)
+                                  .sendWarning(
+                                      text(
+                                          "You don't have enough sponsor tokens! Your sponsor request has been removed"));
+                            }
+                            return;
+                          }
+                          sponsor.getSponsorQueue().addFirst(nextRequest);
+                          if (player != null) {
+                            Audience.get(player)
+                                .sendWarning(
+                                    text(
+                                        "Could not process your sponsor request. It will remain in the queue"));
+                          }
+                          return;
+                        }
+                        if (!currentVote.equals(voteId)
+                            || !superVotes.isVotingActive()
+                            || !options.getCustomVoteMaps().isEmpty()
+                            || poolManager.getOverriderMap() != null
+                            || RestartManager.isQueued()
+                            || isPartyActive()) {
+                          queueRefund(
+                              nextRequest.playerId(),
+                              Currency.SPONSOR_TOKEN,
+                              charge,
+                              "Vote changed before sponsor processing: "
+                                  + nextRequest.map().getId(),
+                              text(
+                                  "The vote changed before your map was added, your request remains queued",
+                                  NamedTextColor.GREEN,
+                                  TextDecoration.BOLD));
+                          sponsor.getSponsorQueue().addFirst(nextRequest);
+                          return;
+                        }
+                        options.addMap(nextRequest.map(), nextRequest.playerId());
+                        sponsor.startNewMapCooldown(nextRequest.map(), Duration.ZERO);
+                        sponsor.setCurrentSponsor(nextRequest);
+                        sponsorCharges.put(nextRequest.playerId(), charge);
+                        sponsor.alertRequesterToConfirmation(nextRequest.playerId());
+                      }));
             },
             1,
             TimeUnit.SECONDS);
@@ -413,6 +864,7 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
   @EventHandler
   public void onVoteEnd(MatchVoteFinishEvent event) {
     voteConfirm.invalidateAll();
+    voteId = UUID.randomUUID();
     superVotes.onVoteEnd();
 
     SponsorRequest currentSponsor = sponsor.getCurrentSponsor();
@@ -423,18 +875,24 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
 
       // Same map = winner, refund the token even if offline
       if (currentSponsor.map().equals(event.getPickedMap()) && currentSponsor.canRefund()) {
+        Component winMessage =
+            text("Your sponsored map won the vote!", NamedTextColor.GREEN, TextDecoration.BOLD);
+        if (getRequestConfig().isSponsorAuditEnabled()) {
+          queueRefund(
+              currentSponsor.playerId(),
+              Currency.SPONSOR_TOKEN,
+              sponsorCharges.get(currentSponsor.playerId()),
+              currentSponsor.map().getId(),
+              winMessage);
+          return;
+        }
         getRequestProfile(currentSponsor.playerId()).thenAcceptAsync(profile -> {
           profile.giveSponsorToken(1);
           update(profile);
 
           if (player != null) {
             Audience viewer = Audience.get(player);
-            viewer.sendMessage(formatTokenTransaction(
-                1,
-                text(
-                    "Your sponsored map won the vote!",
-                    NamedTextColor.GREEN,
-                    TextDecoration.BOLD)));
+            viewer.sendMessage(formatTokenTransaction(1, winMessage));
             viewer.playSound(Sounds.GET_TOKENS);
           }
         });

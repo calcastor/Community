@@ -285,6 +285,7 @@ requests:
   
   sponsors: 
     enabled: true           # Whether /sponsor is enabled
+    audit: false            # Record token grants, spending and refunds
     cooldown: "30m"         # Duration of cooldown between /sponsor requests
     map-cooldown-min: 30m   # Minimum map cooldown after it is sponsored
     map-cooldown: 10        # How much to multiply match duration by for map cooldown
@@ -302,6 +303,7 @@ requests:
     
   super-votes:
     enabled: true    # Whether /supervote is enabled
+    audit: false     # Record super vote grants and spending
     multiplier: 3    # The value of a super vote (how much to boost existing multiplier)
     broadcast: true  # If super vote activation should be broadcast globally
 

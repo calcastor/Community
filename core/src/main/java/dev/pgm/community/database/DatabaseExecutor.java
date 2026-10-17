@@ -17,9 +17,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 
 public final class DatabaseExecutor {
 
@@ -30,6 +32,53 @@ public final class DatabaseExecutor {
   private static final SqlDialect SQLITE_DIALECT = new SqliteDialect();
 
   private DatabaseExecutor() {}
+
+  /** Runs work on one connection, committing all writes together or completing exceptionally. */
+  public static <T> CompletableFuture<T> transactionAsync(Transaction<T> work) {
+    return CompletableFuture.supplyAsync(
+        () -> {
+          try (Connection connection = getConnection()
+              .orElseThrow(() -> new SQLException("Database connection unavailable"))) {
+            return executeTransaction(connection, work);
+          } catch (Exception failure) {
+            throw new CompletionException(failure);
+          }
+        },
+        getExecutor());
+  }
+
+  private static <T> T executeTransaction(Connection connection, Transaction<T> work)
+      throws Exception {
+    boolean autoCommit = connection.getAutoCommit();
+    connection.setAutoCommit(false);
+    try {
+      T result = work.execute(connection);
+      connection.commit();
+      return result;
+    } catch (Exception failure) {
+      try {
+        connection.rollback();
+      } catch (SQLException rollbackFailure) {
+        failure.addSuppressed(rollbackFailure);
+      }
+      throw failure;
+    } finally {
+      // Pooled connections are reused, so hand it back in the state it was received
+      try {
+        connection.setAutoCommit(autoCommit);
+      } catch (SQLException e) {
+        // Logged rather than thrown, the transaction has already committed or rolled back
+        Community.get()
+            .getLogger()
+            .log(Level.WARNING, "Failed to restore auto-commit on connection", e);
+      }
+    }
+  }
+
+  @FunctionalInterface
+  public interface Transaction<T> {
+    T execute(Connection connection) throws Exception;
+  }
 
   public static CompletableFuture<Integer> executeUpdateAsync(String sql, Object... params) {
     return withConnection(() -> 0, conn -> {

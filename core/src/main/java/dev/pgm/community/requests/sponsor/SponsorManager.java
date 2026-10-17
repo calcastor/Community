@@ -11,6 +11,9 @@ import dev.pgm.community.requests.MapCooldown;
 import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
 import dev.pgm.community.requests.SponsorRequest;
+import dev.pgm.community.requests.audit.Currency;
+import dev.pgm.community.requests.audit.CurrencyAction;
+import dev.pgm.community.requests.audit.CurrencyChange;
 import dev.pgm.community.requests.feature.RequestFeature;
 import dev.pgm.community.utils.BroadcastUtils;
 import dev.pgm.community.utils.PGMUtils;
@@ -145,9 +148,29 @@ public class SponsorManager {
 
     // Refresh token amount as long as they have less than the max
     if (refresh > 0 && profile.getSponsorTokens() < config.getMaxTokens()) {
-      profile.refreshTokens(refresh); // Set new token amount
-      requests.update(profile); // Save new token balance to database
-      sendDelayedTokenRefreshMessage(player, refresh, daily, profile.getSponsorTokens());
+      if (!config.isSponsorAuditEnabled()) {
+        profile.refreshTokens(refresh);
+        requests.update(profile);
+        sendDelayedTokenRefreshMessage(player, refresh, daily, profile.getSponsorTokens());
+        return;
+      }
+      final int amount = refresh;
+      final boolean isDaily = daily;
+      requests
+          .changeCurrency(
+              player.getUniqueId(),
+              CurrencyChange.system(
+                  Currency.SPONSOR_TOKEN,
+                  amount,
+                  isDaily ? CurrencyAction.DAILY_REFRESH : CurrencyAction.WEEKLY_REFRESH,
+                  null))
+          .thenAccept(balance -> sendDelayedTokenRefreshMessage(player, amount, isDaily, balance))
+          .exceptionally(failure -> {
+            Audience.get(player)
+                .sendWarning(
+                    text("Could not save your token refresh. Please rejoin to try again!"));
+            return null;
+          });
     }
   }
 

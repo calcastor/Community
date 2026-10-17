@@ -16,6 +16,7 @@ public class RequestConfig extends FeatureConfigImpl {
 
   private static final String SPONSORS = KEY + ".sponsors";
   private static final String SPONSORS_ENABLED = SPONSORS + ".enabled";
+  private static final String SPONSORS_AUDIT = SPONSORS + ".audit";
   private static final String SPONSORS_COOLDOWN = SPONSORS + ".cooldown";
   private static final String SPONSORS_LIMIT = SPONSORS + ".limit";
   private static final String DAILY_TOKENS = SPONSORS + ".daily-tokens";
@@ -32,6 +33,7 @@ public class RequestConfig extends FeatureConfigImpl {
   private static final String SUPER_VOTE_ENABLED = SUPER_VOTE + ".enabled";
   private static final String SUPER_VOTE_MULTIPLIER = SUPER_VOTE + ".multiplier";
   private static final String SUPER_VOTE_BROADCAST = SUPER_VOTE + ".broadcast";
+  private static final String SUPER_VOTE_AUDIT = SUPER_VOTE + ".audit";
 
   private Duration cooldown; // Cooldown for using /request
   private Duration sponsorCooldown; // Default cooldown for sponsor requests
@@ -59,6 +61,9 @@ public class RequestConfig extends FeatureConfigImpl {
 
   private int superVoteMultiplier; // The value a super vote should add
   private boolean superVoteBroadcast; // If super vote activation should be broadcasted
+
+  private boolean sponsorAudit; // Whether to record sponsor token grants, spending and refunds
+  private boolean superVoteAudit; // Whether to record super vote grants and spending
 
   public RequestConfig(Configuration config) {
     super(KEY, config);
@@ -144,6 +149,14 @@ public class RequestConfig extends FeatureConfigImpl {
     return scaleFactor;
   }
 
+  public boolean isSponsorAuditEnabled() {
+    return sponsorAudit;
+  }
+
+  public boolean isSuperVoteAuditEnabled() {
+    return superVoteAudit;
+  }
+
   @Override
   public void reload(Configuration config) {
     super.reload(config);
@@ -164,5 +177,7 @@ public class RequestConfig extends FeatureConfigImpl {
     this.superVoteEnabled = config.getBoolean(SUPER_VOTE_ENABLED);
     this.superVoteMultiplier = config.getInt(SUPER_VOTE_MULTIPLIER);
     this.superVoteBroadcast = config.getBoolean(SUPER_VOTE_BROADCAST);
+    this.sponsorAudit = config.getBoolean(SPONSORS_AUDIT, false);
+    this.superVoteAudit = config.getBoolean(SUPER_VOTE_AUDIT, false);
   }
 }

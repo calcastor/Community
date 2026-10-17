@@ -1,5 +1,6 @@
 package dev.pgm.community.requests;
 
+import dev.pgm.community.requests.audit.Currency;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -11,14 +12,14 @@ public class RequestProfile {
   private Instant lastRequestTime;
   private String lastRequestMap;
 
-  private Instant lastSponsorTime;
-  private String lastSponsorMap;
+  private volatile Instant lastSponsorTime;
+  private volatile String lastSponsorMap;
 
-  private int sponsorTokens;
-  private Instant lastTokenRefreshTime;
+  private volatile int sponsorTokens;
+  private volatile Instant lastTokenRefreshTime;
 
-  private int superVotes;
-  private Instant lastSuperVote;
+  private volatile int superVotes;
+  private volatile Instant lastSuperVote;
 
   public RequestProfile(UUID playerId) {
     this(playerId, null, null, null, null, 0, null, 0, null);
@@ -43,6 +44,19 @@ public class RequestProfile {
     this.lastTokenRefreshTime = lastTokenRefreshTime;
     this.superVotes = superVotes;
     this.lastSuperVote = lastSuperVote;
+  }
+
+  public synchronized void applyCurrency(
+      Currency currency, int balance, Instant refresh, Instant spent, String map) {
+    if (currency == Currency.SPONSOR_TOKEN) {
+      this.sponsorTokens = balance;
+      this.lastTokenRefreshTime = refresh;
+      this.lastSponsorTime = spent;
+      this.lastSponsorMap = map;
+    } else {
+      this.superVotes = balance;
+      this.lastSuperVote = spent;
+    }
   }
 
   public int giveSponsorToken(int amount) {

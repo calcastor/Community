@@ -8,6 +8,7 @@ import dev.pgm.community.database.DatabaseExecutor;
 import dev.pgm.community.feature.SQLFeatureBase;
 import dev.pgm.community.requests.RequestProfile;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -24,15 +25,26 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
     this.profileCache = CacheBuilder.newBuilder().build(CacheLoader.from(UserRequestData::new));
   }
 
-  public CompletableFuture<RequestProfile> login(UUID playerId) {
-    return query(playerId.toString()).thenApplyAsync(profile -> {
-      RequestProfile reqProfile = new RequestProfile(playerId);
-      if (profile == null) {
-        save(reqProfile);
-        return reqProfile;
-      }
-      return profile;
-    });
+  public CompletableFuture<RequestProfile> login(UUID playerId, boolean awaitPersistence) {
+    if (!awaitPersistence) {
+      return query(playerId.toString()).thenApplyAsync(profile -> {
+        if (profile != null) return profile;
+        RequestProfile created = new RequestProfile(playerId);
+        save(created);
+        return created;
+      });
+    }
+    return getTableReady()
+        .thenCompose(ignored -> query(playerId.toString()))
+        .thenCompose(profile -> {
+          if (profile != null) return CompletableFuture.completedFuture(profile);
+          return DatabaseExecutor.executeUpdateAsync(
+                  INSERT_REQUESTS_QUERY, playerId.toString(), -1L, null, -1L, null, 0, -1L, 0, -1L)
+              .thenCompose(count -> {
+                profileCache.invalidate(playerId);
+                return query(playerId.toString());
+              });
+        });
   }
 
   @Nullable
@@ -60,18 +72,27 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
     profileCache.invalidate(profile.getPlayerId());
   }
 
-  public void update(RequestProfile profile) {
-    DatabaseExecutor.executeUpdateAsync(
-        UPDATE_REQUEST_QUERY,
-        convertTime(profile.getLastRequestTime()),
-        profile.getLastRequestMap(),
-        convertTime(profile.getLastSponsorTime()),
-        profile.getLastSponsorMap(),
-        profile.getSponsorTokens(),
-        convertTime(profile.getLastTokenRefreshTime()),
-        profile.getSuperVotes(),
-        convertTime(profile.getLastSuperVote()),
-        profile.getPlayerId().toString());
+  public void update(
+      RequestProfile profile, boolean updateSponsorTokens, boolean updateSuperVotes) {
+    // Audited currency fields are owned exclusively by the transactional currency service.
+    String sql = "UPDATE " + TABLE_NAME + " SET " + REQUEST_UPDATE_FIELDS;
+    List<Object> params = new ArrayList<>();
+    params.add(convertTime(profile.getLastRequestTime()));
+    params.add(profile.getLastRequestMap());
+    if (updateSponsorTokens) {
+      sql += ", " + SPONSOR_UPDATE_FIELDS;
+      params.add(convertTime(profile.getLastSponsorTime()));
+      params.add(profile.getLastSponsorMap());
+      params.add(profile.getSponsorTokens());
+      params.add(convertTime(profile.getLastTokenRefreshTime()));
+    }
+    if (updateSuperVotes) {
+      sql += ", " + SUPER_VOTE_UPDATE_FIELDS;
+      params.add(profile.getSuperVotes());
+      params.add(convertTime(profile.getLastSuperVote()));
+    }
+    params.add(profile.getPlayerId().toString());
+    DatabaseExecutor.executeUpdateAsync(sql + " WHERE id = ?", params.toArray());
   }
 
   @Override
