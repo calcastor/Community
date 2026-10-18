@@ -14,6 +14,7 @@ import dev.pgm.community.requests.SponsorRequest;
 import dev.pgm.community.requests.audit.Currency;
 import dev.pgm.community.requests.audit.CurrencyAction;
 import dev.pgm.community.requests.audit.CurrencyChange;
+import dev.pgm.community.requests.audit.RefreshNotEligibleException;
 import dev.pgm.community.requests.feature.RequestFeature;
 import dev.pgm.community.utils.BroadcastUtils;
 import dev.pgm.community.utils.PGMUtils;
@@ -166,6 +167,7 @@ public class SponsorManager {
                   null))
           .thenAccept(balance -> sendDelayedTokenRefreshMessage(player, amount, isDaily, balance))
           .exceptionally(failure -> {
+            if (RefreshNotEligibleException.isCause(failure)) return null;
             Audience.get(player)
                 .sendWarning(
                     text("Could not save your token refresh. Please rejoin to try again!"));

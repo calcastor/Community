@@ -144,6 +144,22 @@ public interface RequestFeature extends Feature {
    */
   RequestProfile getCached(UUID playerId);
 
+  /**
+   * Drops the cached {@link RequestProfile} after it changed on another server, reloading it if the
+   * player is online here
+   *
+   * @param playerId the player id
+   */
+  void receiveNetworkInvalidation(UUID playerId);
+
+  /**
+   * Removes the player's queued sponsor request after a newer one took their network-wide sponsor
+   * slot on another server
+   *
+   * @param playerId the player id
+   */
+  void receiveSponsorClaim(UUID playerId);
+
   CompletableFuture<RequestProfile> onLogin(PlayerJoinEvent event);
 
   /**

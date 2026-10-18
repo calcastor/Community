@@ -12,6 +12,7 @@ import dev.pgm.community.requests.audit.CurrencyHistoryPage;
 import dev.pgm.community.requests.audit.CurrencyResult;
 import dev.pgm.community.requests.audit.InsufficientCurrencyException;
 import dev.pgm.community.requests.audit.PendingRefund;
+import dev.pgm.community.requests.audit.RefreshNotEligibleException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -223,7 +224,7 @@ public final class SQLCurrencyAuditService implements CurrencyAuditQuery {
               : Duration.ofDays(8))
           .toMillis();
       if (before >= maxTokens || (refresh != -1 && now - refresh < interval)) {
-        throw new SQLException("Token refresh is no longer eligible");
+        throw new RefreshNotEligibleException();
       }
     }
     if (change.action() == CurrencyAction.SPEND && before < -change.amount()) {

@@ -17,6 +17,8 @@ import org.jspecify.annotations.Nullable;
 public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
     implements RequestQuery {
 
+  private static final int REFRESH_ATTEMPTS = 3;
+
   private final LoadingCache<UUID, UserRequestData> profileCache;
 
   public SQLRequestService() {
@@ -27,24 +29,22 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
 
   public CompletableFuture<RequestProfile> login(UUID playerId, boolean awaitPersistence) {
     if (!awaitPersistence) {
-      return query(playerId.toString()).thenApplyAsync(profile -> {
+      return refresh(playerId).thenApplyAsync(profile -> {
         if (profile != null) return profile;
         RequestProfile created = new RequestProfile(playerId);
         save(created);
         return created;
       });
     }
-    return getTableReady()
-        .thenCompose(ignored -> query(playerId.toString()))
-        .thenCompose(profile -> {
-          if (profile != null) return CompletableFuture.completedFuture(profile);
-          return DatabaseExecutor.executeUpdateAsync(
-                  INSERT_REQUESTS_QUERY, playerId.toString(), -1L, null, -1L, null, 0, -1L, 0, -1L)
-              .thenCompose(count -> {
-                profileCache.invalidate(playerId);
-                return query(playerId.toString());
-              });
-        });
+    return getTableReady().thenCompose(ignored -> refresh(playerId)).thenCompose(profile -> {
+      if (profile != null) return CompletableFuture.completedFuture(profile);
+      return DatabaseExecutor.executeUpdateAsync(
+              INSERT_REQUESTS_QUERY, playerId.toString(), -1L, null, -1L, null, 0, -1L, 0, -1L)
+          .thenCompose(count -> {
+            profileCache.invalidate(playerId);
+            return query(playerId.toString());
+          });
+    });
   }
 
   @Nullable
@@ -72,7 +72,7 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
     profileCache.invalidate(profile.getPlayerId());
   }
 
-  public void update(
+  public CompletableFuture<Void> update(
       RequestProfile profile, boolean updateSponsorTokens, boolean updateSuperVotes) {
     // Audited currency fields are owned exclusively by the transactional currency service.
     String sql = "UPDATE " + TABLE_NAME + " SET " + REQUEST_UPDATE_FIELDS;
@@ -92,7 +92,12 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
       params.add(convertTime(profile.getLastSuperVote()));
     }
     params.add(profile.getPlayerId().toString());
-    DatabaseExecutor.executeUpdateAsync(sql + " WHERE id = ?", params.toArray());
+    return DatabaseExecutor.executeUpdateAsync(sql + " WHERE id = ?", params.toArray())
+        .thenApply(ignored -> null);
+  }
+
+  public void invalidate(UUID playerId) {
+    profileCache.invalidate(playerId);
   }
 
   @Override
@@ -107,49 +112,70 @@ public class SQLRequestService extends SQLFeatureBase<RequestProfile, String>
 
     if (profile.isLoaded() && profile.getProfile() != null) {
       return CompletableFuture.completedFuture(profile.getProfile());
-    } else {
-      return DatabaseExecutor.queryFirstAsync(
-              SELECT_REQUEST_QUERY,
-              result -> {
-                final UUID id = UUID.fromString(result.getString("id"));
-                final long lastRequest = result.getLong("last_request_time");
-                final String lastRequestMap = result.getString("last_request_map");
-                final long lastSponsor = result.getLong("last_sponsor_time");
-                final String lastSponsorMap = result.getString("last_sponsor_map");
-                final int tokens = result.getInt("tokens");
-                final long lastToken = result.getLong("last_token_refresh");
-                final int superVotes = result.getInt("super_votes");
-                final long lastSuperVote = result.getLong("last_super_vote");
-
-                final Instant lastRequestTime =
-                    lastRequest == -1 ? null : Instant.ofEpochMilli(lastRequest);
-                final Instant lastSponsorTime =
-                    lastSponsor == -1 ? null : Instant.ofEpochMilli(lastSponsor);
-                final Instant lastTokenRefreshTime =
-                    lastToken == -1 ? null : Instant.ofEpochMilli(lastToken);
-                final Instant lastSuperVoteTime =
-                    lastSuperVote == -1 ? null : Instant.ofEpochMilli(lastSuperVote);
-
-                return new RequestProfile(
-                    id,
-                    lastRequestTime,
-                    lastRequestMap,
-                    lastSponsorTime,
-                    lastSponsorMap,
-                    tokens,
-                    lastTokenRefreshTime,
-                    superVotes,
-                    lastSuperVoteTime);
-              },
-              playerId.toString())
-          .thenApplyAsync(result -> {
-            if (result != null) {
-              profile.setProfile(result);
-            }
-            profile.setLoaded(true);
-            return profile.getProfile();
-          });
     }
+    return load(playerId).thenApplyAsync(result -> {
+      if (result != null) {
+        profile.setProfile(result);
+      }
+      profile.setLoaded(true);
+      return profile.getProfile();
+    });
+  }
+
+  public CompletableFuture<RequestProfile> refresh(UUID playerId) {
+    UserRequestData data = profileCache.getIfPresent(playerId);
+    if (data == null || data.getProfile() == null) return query(playerId.toString());
+    return reload(playerId, data.getProfile(), REFRESH_ATTEMPTS);
+  }
+
+  private CompletableFuture<RequestProfile> reload(
+      UUID playerId, RequestProfile cached, int attempts) {
+    long version = cached.getVersion();
+    return load(playerId).thenCompose(fresh -> {
+      if (fresh == null || cached.copyFromIfUnchanged(fresh, version)) {
+        return CompletableFuture.completedFuture(cached);
+      }
+
+      if (attempts > 1) return reload(playerId, cached, attempts - 1);
+      return CompletableFuture.completedFuture(cached);
+    });
+  }
+
+  private CompletableFuture<RequestProfile> load(UUID playerId) {
+    return DatabaseExecutor.queryFirstAsync(
+        SELECT_REQUEST_QUERY,
+        result -> {
+          final UUID id = UUID.fromString(result.getString("id"));
+          final long lastRequest = result.getLong("last_request_time");
+          final String lastRequestMap = result.getString("last_request_map");
+          final long lastSponsor = result.getLong("last_sponsor_time");
+          final String lastSponsorMap = result.getString("last_sponsor_map");
+          final int tokens = result.getInt("tokens");
+          final long lastToken = result.getLong("last_token_refresh");
+          final int superVotes = result.getInt("super_votes");
+          final long lastSuperVote = result.getLong("last_super_vote");
+
+          final Instant lastRequestTime =
+              lastRequest == -1 ? null : Instant.ofEpochMilli(lastRequest);
+          final Instant lastSponsorTime =
+              lastSponsor == -1 ? null : Instant.ofEpochMilli(lastSponsor);
+          final Instant lastTokenRefreshTime =
+              lastToken == -1 ? null : Instant.ofEpochMilli(lastToken);
+          final Instant lastSuperVoteTime =
+              lastSuperVote == -1 ? null : Instant.ofEpochMilli(lastSuperVote);
+
+          return new RequestProfile(
+              id,
+              lastRequestTime,
+              lastRequestMap,
+              lastSponsorTime,
+              lastSponsorMap,
+              tokens,
+              lastTokenRefreshTime,
+              superVotes,
+              lastSuperVoteTime);
+        },
+        playerId.toString());
   }
 
   private long convertTime(Instant time) {

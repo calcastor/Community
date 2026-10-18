@@ -85,7 +85,7 @@ public class FeatureManager {
     this.friends =
         new FriendshipFeatureCore(config, logger, users, stores.friends(), settings, network);
     this.nick = new NickFeatureCore(config, logger, users, stores.nicks());
-    this.requests = new RequestFeatureCore(config, logger, users, stores.requests());
+    this.requests = new RequestFeatureCore(config, logger, users, network, stores.requests());
     this.altRisk = new AltRiskFeature(config, logger, users, sessions, moderation);
 
     // TODO: 1. Support non-sql databases?

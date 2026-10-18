@@ -21,6 +21,13 @@ public class Channels {
   // SETTING_UPDATE - Used to update a player's cached settings on other servers
   public static final String SETTING_UPDATE = formatChannel("setting_update");
 
+  // REQUEST_UPDATE - Used to update a player's cached request profile (tokens, super votes) on
+  // other servers
+  public static final String REQUEST_UPDATE = formatChannel("request_update");
+
+  // SPONSOR_CLAIM - Used to remove a player's queued sponsor request from other servers
+  public static final String SPONSOR_CLAIM = formatChannel("sponsor_claim");
+
   private static String formatChannel(String name) {
     return "community_" + name;
   }

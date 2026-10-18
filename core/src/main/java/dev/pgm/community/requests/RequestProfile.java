@@ -4,6 +4,7 @@ import dev.pgm.community.requests.audit.Currency;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import tc.oc.pgm.api.map.MapInfo;
 
 public class RequestProfile {
@@ -20,6 +21,8 @@ public class RequestProfile {
 
   private volatile int superVotes;
   private volatile Instant lastSuperVote;
+
+  private final AtomicLong version = new AtomicLong();
 
   public RequestProfile(UUID playerId) {
     this(playerId, null, null, null, null, 0, null, 0, null);
@@ -46,8 +49,31 @@ public class RequestProfile {
     this.lastSuperVote = lastSuperVote;
   }
 
+  public long getVersion() {
+    return version.get();
+  }
+
+  public synchronized boolean copyFromIfUnchanged(RequestProfile other, long expectedVersion) {
+    if (version.get() != expectedVersion) return false;
+    copyFrom(other);
+    return true;
+  }
+
+  private synchronized void copyFrom(RequestProfile other) {
+    version.incrementAndGet();
+    this.lastRequestTime = other.lastRequestTime;
+    this.lastRequestMap = other.lastRequestMap;
+    this.lastSponsorTime = other.lastSponsorTime;
+    this.lastSponsorMap = other.lastSponsorMap;
+    this.sponsorTokens = other.sponsorTokens;
+    this.lastTokenRefreshTime = other.lastTokenRefreshTime;
+    this.superVotes = other.superVotes;
+    this.lastSuperVote = other.lastSuperVote;
+  }
+
   public synchronized void applyCurrency(
       Currency currency, int balance, Instant refresh, Instant spent, String map) {
+    version.incrementAndGet();
     if (currency == Currency.SPONSOR_TOKEN) {
       this.sponsorTokens = balance;
       this.lastTokenRefreshTime = refresh;
@@ -60,27 +86,32 @@ public class RequestProfile {
   }
 
   public int giveSponsorToken(int amount) {
+    version.incrementAndGet();
     this.sponsorTokens = Math.max(0, sponsorTokens + amount);
     return sponsorTokens;
   }
 
   public int giveSuperVotes(int amount) {
+    version.incrementAndGet();
     this.superVotes = Math.max(0, superVotes + amount);
     return superVotes;
   }
 
   public void request(MapInfo map) {
+    version.incrementAndGet();
     this.lastRequestMap = map.getId();
     this.lastRequestTime = Instant.now();
   }
 
   public void sponsor(MapInfo map) {
+    version.incrementAndGet();
     this.lastSponsorMap = map.getId();
     this.lastSponsorTime = Instant.now();
     giveSponsorToken(-1);
   }
 
   public void superVote() {
+    version.incrementAndGet();
     this.lastSuperVote = Instant.now();
     giveSuperVotes(-1);
   }
@@ -118,6 +149,7 @@ public class RequestProfile {
   }
 
   public void refreshTokens(int amount) {
+    version.incrementAndGet();
     giveSponsorToken(amount);
     this.lastTokenRefreshTime = Instant.now();
   }

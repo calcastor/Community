@@ -16,6 +16,11 @@ import com.google.common.collect.Maps;
 import dev.pgm.community.Community;
 import dev.pgm.community.CommunityPermissions;
 import dev.pgm.community.feature.FeatureBase;
+import dev.pgm.community.network.feature.NetworkFeature;
+import dev.pgm.community.network.subs.types.RequestSubscriber;
+import dev.pgm.community.network.subs.types.SponsorClaimSubscriber;
+import dev.pgm.community.network.updates.types.RequestUpdate;
+import dev.pgm.community.network.updates.types.SponsorClaimUpdate;
 import dev.pgm.community.party.MapParty;
 import dev.pgm.community.requests.RequestConfig;
 import dev.pgm.community.requests.RequestProfile;
@@ -27,6 +32,7 @@ import dev.pgm.community.requests.audit.CurrencyHistoryPage;
 import dev.pgm.community.requests.audit.CurrencyResult;
 import dev.pgm.community.requests.audit.InsufficientCurrencyException;
 import dev.pgm.community.requests.audit.PendingRefund;
+import dev.pgm.community.requests.audit.RefreshNotEligibleException;
 import dev.pgm.community.requests.feature.RequestFeature;
 import dev.pgm.community.requests.feature.SponsorVotingBookCreator;
 import dev.pgm.community.requests.menu.SponsorMenu;
@@ -97,6 +103,7 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
   private final SponsorManager sponsor;
   private final SuperVoteManager superVotes;
   private final UsersFeature users;
+  private final NetworkFeature network;
 
   private final Map<UUID, CompletableFuture<?>> currencyChanges = new HashMap<>();
   private final Map<UUID, PendingRefund> pendingRefunds = new ConcurrentHashMap<>();
@@ -112,7 +119,11 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
   private boolean accepting;
 
   public RequestFeatureCore(
-      Configuration config, Logger logger, UsersFeature users, RequestStore store) {
+      Configuration config,
+      Logger logger,
+      UsersFeature users,
+      NetworkFeature network,
+      RequestStore store) {
     super(new RequestConfig(config), logger, "Requests");
     this.requests =
         CacheBuilder.newBuilder().expireAfterWrite(1, TimeUnit.HOURS).build();
@@ -124,16 +135,25 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
     this.superVotes = new SuperVoteManager(getRequestConfig(), logger);
     this.store = store;
     this.users = users;
+    this.network = network;
 
     if (getConfig().isEnabled() && PGMUtils.isPGMEnabled()) {
       enable();
       MapPoll.setVotingBookCreator(bookCreator);
+      network.registerSubscriber(new RequestSubscriber(this, network.getNetworkId(), logger));
+      network.registerSubscriber(new SponsorClaimSubscriber(this, network.getNetworkId(), logger));
     }
   }
 
   @Override
   public void enable() {
     super.enable();
+    if (isAuditEnabled(Currency.SPONSOR_TOKEN)) {
+      store.releaseServerSponsorClaims(getServerId()).exceptionally(failure -> {
+        logger.log(Level.WARNING, "Could not clear stale sponsor claims", failure);
+        return null;
+      });
+    }
     if (isAnyAuditEnabled()) {
       store.initializeCurrencyAudit().exceptionally(failure -> {
         logger.log(Level.WARNING, "Currency audit initialization failed", failure);
@@ -179,6 +199,11 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
                     Community.get().getServerConfig().getServerId())
                 .thenApply(result -> {
                   logCurrencyChange(playerId, change, result);
+                  RequestProfile cached = store.getCached(playerId);
+                  if (cached != null && cached != profile) store.refresh(playerId);
+                  if (!result.duplicate()) {
+                    network.sendUpdate(new RequestUpdate(playerId));
+                  }
                   return result.balanceAfter();
                 });
           }
@@ -214,6 +239,12 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
             "&f%s &ccould not spend %s &8- &7not enough balance",
             getAuditName(playerId, change),
             formatAuditAmount(change.currency(), change.amount()));
+      } else if (failure != null && RefreshNotEligibleException.isCause(failure)) {
+        logAudit(
+            change.currency(),
+            "&8Skipped %s for &7%s &8- already refreshed or at the token limit",
+            change.action().name(),
+            getAuditName(playerId, change));
       } else if (failure != null) {
         logger.log(
             Level.WARNING,
@@ -400,6 +431,43 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
     return (RequestConfig) getConfig();
   }
 
+  private CompletableFuture<RequestProfile> withCurrentBalance(
+      UUID playerId, RequestProfile profile, Currency currency) {
+    if (profile == null || !isAuditEnabled(currency)) {
+      return CompletableFuture.completedFuture(profile);
+    }
+    int balance =
+        currency == Currency.SPONSOR_TOKEN ? profile.getSponsorTokens() : profile.getSuperVotes();
+    if (balance >= 1) return CompletableFuture.completedFuture(profile);
+    return store.refresh(playerId);
+  }
+
+  private String getServerId() {
+    return Community.get().getServerConfig().getServerId();
+  }
+
+  private void releaseSponsorClaim(UUID playerId) {
+    if (!isAuditEnabled(Currency.SPONSOR_TOKEN)) return;
+    store.releaseSponsorClaim(playerId, getServerId()).exceptionally(failure -> {
+      logger.log(Level.WARNING, "Could not release sponsor slot for " + playerId, failure);
+      return null;
+    });
+  }
+
+  private static class SponsorClaimLostException extends RuntimeException {
+
+    SponsorClaimLostException() {
+      super("Sponsor slot was claimed by another server");
+    }
+
+    static boolean isCause(Throwable failure) {
+      for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+        if (cause instanceof SponsorClaimLostException) return true;
+      }
+      return false;
+    }
+  }
+
   private boolean isAuditEnabled(Currency currency) {
     return currency == Currency.SPONSOR_TOKEN
         ? getRequestConfig().isSponsorAuditEnabled()
@@ -418,10 +486,34 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
 
   @Override
   public void update(RequestProfile profile) {
-    store.update(
-        profile,
-        !getRequestConfig().isSponsorAuditEnabled(),
-        !getRequestConfig().isSuperVoteAuditEnabled());
+    store
+        .update(
+            profile,
+            !getRequestConfig().isSponsorAuditEnabled(),
+            !getRequestConfig().isSuperVoteAuditEnabled())
+        .thenRun(() -> network.sendUpdate(new RequestUpdate(profile.getPlayerId())));
+  }
+
+  @Override
+  public void receiveSponsorClaim(UUID playerId) {
+    if (!isAuditEnabled(Currency.SPONSOR_TOKEN)) return;
+    Bukkit.getScheduler().runTask(Community.get(), () -> {
+      if (sponsor.getSponsorQueue().removeIf(request -> request.playerId().equals(playerId))) {
+        String name = users.getUsername(playerId);
+        Community.log(
+            "Removed sponsor request for %s - replaced on another server",
+            name != null ? name : playerId);
+      }
+    });
+  }
+
+  @Override
+  public void receiveNetworkInvalidation(UUID playerId) {
+    if (Bukkit.getPlayer(playerId) != null) {
+      store.refresh(playerId);
+    } else {
+      store.invalidate(playerId);
+    }
   }
 
   @Override
@@ -564,16 +656,69 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
       return;
     }
 
-    getRequestProfile(player.getUniqueId()).thenAcceptAsync(profile -> {
-      if (!canSponsor(player)) {
-        viewer.sendWarning(getCooldownMessage(
-            profile.getLastSponsorTime(), getRequestConfig().getSponsorCooldown(player)));
+    getRequestProfile(player.getUniqueId())
+        .thenCompose(
+            profile -> withCurrentBalance(player.getUniqueId(), profile, Currency.SPONSOR_TOKEN))
+        .thenAcceptAsync(profile -> {
+          if (!canSponsor(player)) {
+            viewer.sendWarning(getCooldownMessage(
+                profile.getLastSponsorTime(), getRequestConfig().getSponsorCooldown(player)));
+            return;
+          }
+
+          // Check tokens
+          if (profile.getSponsorTokens() < 1) {
+            viewer.sendWarning(text("You don't have enough sponsor tokens!"));
+            return;
+          }
+
+          if (!isAuditEnabled(Currency.SPONSOR_TOKEN)) {
+            queueSponsorRequest(player, viewer, map, null);
+            return;
+          }
+
+          // Take the player's network-wide sponsor slot, replacing a request on another server
+          store
+              .claimSponsor(player.getUniqueId(), getServerId(), map.getId())
+              .whenComplete((replaced, failure) -> {
+                if (failure == null) {
+                  // Remove any older request for this player still queued on another server
+                  network.sendUpdate(new SponsorClaimUpdate(player.getUniqueId()));
+                } else {
+                  // Still queue it, a missing claim counts as owned when the request is processed
+                  logger.log(
+                      Level.WARNING,
+                      "Could not claim sponsor slot for " + player.getName(),
+                      failure);
+                }
+                queueSponsorRequest(
+                    player, viewer, map, replaced != null ? replaced.orElse(null) : null);
+              });
+        });
+  }
+
+  private void queueSponsorRequest(
+      Player player, Audience viewer, MapInfo map, String replacedServer) {
+    Bukkit.getScheduler().runTask(Community.get(), () -> {
+      if (sponsor.isQueued(player.getUniqueId())) {
+        viewer.sendWarning(text("You already have a map in the sponsor queue."));
         return;
       }
-
-      // Check tokens
-      if (profile.getSponsorTokens() < 1) {
-        viewer.sendWarning(text("You don't have enough sponsor tokens!"));
+      if (!player.isOnline()) {
+        releaseSponsorClaim(player.getUniqueId());
+        return;
+      }
+      if (sponsor.isMapQueued(map)) {
+        releaseSponsorClaim(player.getUniqueId());
+        viewer.sendWarning(text()
+            .append(map.getStyledName(MapNameStyle.COLOR))
+            .append(text(" is already in the queue!"))
+            .build());
+        return;
+      }
+      if (!sponsor.isQueueOpen()) {
+        releaseSponsorClaim(player.getUniqueId());
+        viewer.sendWarning(text("The sponsor queue is full! Please submit your request later."));
         return;
       }
 
@@ -583,6 +728,11 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
 
       // Send confirmation, including map queue position
       viewer.sendMessage(SponsorComponents.getSuccessfulSponsorMessage(map));
+      if (replacedServer != null) {
+        viewer.sendMessage(text(
+            "Your sponsor request on " + replacedServer + " has been replaced by this one",
+            NamedTextColor.GRAY));
+      }
 
       if (sponsor.getSponsorQueue().size() > 1) {
         viewer.sendMessage(
@@ -650,8 +800,10 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
           "Vote " + currentVote + " on " + getCurrentMap().getId(),
           null);
       getRequestProfile(player.getUniqueId())
+          .thenCompose(
+              profile -> withCurrentBalance(player.getUniqueId(), profile, Currency.SUPER_VOTE))
           .thenCompose(profile -> {
-            // Check the cached balance first so an empty balance never reaches the database
+            // Check the balance first so an empty balance never reaches the database
             if (profile != null && profile.getSuperVotes() < 1) {
               return CompletableFuture.<Integer>failedFuture(new InsufficientCurrencyException());
             }
@@ -802,15 +954,34 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
                       : chargingPlayer.getName(),
                   nextRequest.map().getId(),
                   null);
-              changeCurrency(nextRequest.playerId(), charge)
+              store
+                  .ownsSponsorClaim(nextRequest.playerId(), getServerId())
+                  .exceptionally(failure -> {
+                    logger.log(
+                        Level.WARNING,
+                        "Could not check sponsor slot for " + nextRequest.playerId(),
+                        failure);
+                    return true;
+                  })
+                  .thenCompose(owned -> owned
+                      ? changeCurrency(nextRequest.playerId(), charge)
+                      : CompletableFuture.<Integer>failedFuture(new SponsorClaimLostException()))
                   .whenComplete((balance, failure) -> Bukkit.getScheduler()
                       .runTask(Community.get(), () -> {
                         processingSponsor = false;
                         if (failure != null) {
                           Player player = Bukkit.getPlayer(nextRequest.playerId());
+                          // Replaced by a newer request on another server, which owns it now
+                          if (SponsorClaimLostException.isCause(failure)) {
+                            Community.log(
+                                "Removed sponsor request (%s) for %s - replaced on another server",
+                                nextRequest.map().getName(), nextRequest.playerId());
+                            return;
+                          }
                           // Retrying can't fix a low balance, so drop the request instead of
                           // letting it claim the sponsor slot every time it reaches the front
                           if (InsufficientCurrencyException.isCause(failure)) {
+                            releaseSponsorClaim(nextRequest.playerId());
                             Community.log(
                                 "Removed sponsor request (%s) for %s - not enough tokens",
                                 nextRequest.map().getName(), nextRequest.playerId());
@@ -854,6 +1025,7 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
                         sponsor.startNewMapCooldown(nextRequest.map(), Duration.ZERO);
                         sponsor.setCurrentSponsor(nextRequest);
                         sponsorCharges.put(nextRequest.playerId(), charge);
+                        releaseSponsorClaim(nextRequest.playerId());
                         sponsor.alertRequesterToConfirmation(nextRequest.playerId());
                       }));
             },
@@ -998,7 +1170,9 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
 
   @Override
   public boolean cancelSponsorRequest(UUID playerId) {
-    return this.sponsor.getSponsorQueue().removeIf(s -> s.playerId().equals(playerId));
+    boolean removed = this.sponsor.getSponsorQueue().removeIf(s -> s.playerId().equals(playerId));
+    if (removed) releaseSponsorClaim(playerId);
+    return removed;
   }
 
   @Override
@@ -1048,6 +1222,7 @@ public class RequestFeatureCore extends FeatureBase implements RequestFeature {
 
       if (player == null || !player.isOnline()) {
         iterator.remove();
+        releaseSponsorClaim(request.playerId());
 
         logger.info("Removed offline sponsor request:" + request.playerId() + " for map "
             + request.map().getName());
